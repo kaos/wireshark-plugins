@@ -23,7 +23,20 @@ Cap'n Proto RPC protocol dissector
 Currently it simply dissects any Cap'n Proto message, as no RPC
 schema information has been implemented yet.
 
-It can look something like this:
+
+### Capture some data
+
+Example command to capture the data from the capnp calculator sample
+(assuming the server is already running, and listening on
+`localhost:55000`):
+
+```
+    { wireshark -i lo -k -a duration:2 & }; \
+    sleep 2 && ./calculator-client localhost:55000
+```
+
+
+It can look something like this (output from `tshark -i lo -V -O capnp`):
 
 ```
 Frame 111: 210 bytes on wire (1680 bits), 210 bytes captured (1680 bits) on interface 0

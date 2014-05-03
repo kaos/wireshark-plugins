@@ -16,28 +16,27 @@
 local proto = Proto("capnp", "Cap'n Proto RPC Protocol")
 proto.fields.count = ProtoField.uint32("capnp.count", "Count")
 proto.fields.size = ProtoField.uint32("capnp.size", "Size")
-proto.fields.struct = ProtoField.bytes("capnp.struct", "Struct")
 proto.fields.offset = ProtoField.int32("capnp.offset", "Offset")
 proto.fields.dsize = ProtoField.uint16("capnp.dsize", "Data size")
 proto.fields.psize = ProtoField.uint16("capnp.psize", "Pointers")
 proto.fields.data = ProtoField.bytes("capnp.data", "Data")
-proto.fields.list = ProtoField.bytes("capnp.list", "List")
 proto.fields.text = ProtoField.string("capnp.text", "Text")
 
 local data_dis = Dissector.get("data")
 local dissect = {}
+local schema = {}
 
 function proto.dissector(buf, pkt, root)
    if buf(0,1):bitfield(6, 2) == 0 then
       pkt.cols.protocol:set("CAPNP")
-      dissect.message(buf, pkt, root:add(proto, buf(0)))
+      dissect.message(buf, pkt, root:add(proto, buf(0)), schema.rpc, "Message")
    end
    data_dis:call(buf, pkt, root)
 end
 
 DissectorTable.get("tcp.port"):add(55000, proto)
 
-function dissect.message(buf, pkt, root)
+function dissect.message(buf, pkt, root, sch, typ)
    local tree = root
    local count = buf(0,4):le_uint() + 1
    local data = buf(4 * (count + count % 2)):tvb()
@@ -54,10 +53,10 @@ function dissect.message(buf, pkt, root)
       data = data(size):tvb()
    end
 
-   dissect.ptr(0, 0, segs, pkt, tree)
+   dissect.ptr(0, 0, segs, pkt, tree, sch, typ)
 end
 
-function dissect.ptr(seg, pos, segs, pkt, root)
+function dissect.ptr(seg, pos, segs, pkt, root, sch, typ)
    local kind = segs[seg](pos, 1):bitfield(6, 2)
    local dis = function ()
       local ref = segs[seg](pos, 8):tvb()
@@ -73,15 +72,15 @@ function dissect.ptr(seg, pos, segs, pkt, root)
       dis = dissect.list
    end
 
-   dis(seg, pos, segs, pkt, root)
+   dis(seg, pos, segs, pkt, root, sch, typ)
 end
 
-function dissect.struct(seg, pos, segs, pkt, root)
+function dissect.struct(seg, pos, segs, pkt, root, sch, typ)
    local buf = segs[seg]
    local offset = buf(pos, 4):le_int() / 4
    local dsize = buf(pos + 4, 2):le_uint()
    local psize = buf(pos + 6, 2):le_uint()
-   local tree = root:add(proto.fields.struct, buf(pos, 8))
+   local tree = root:add(buf(pos, 8), "struct", typ or "(no schema)")
 
    tree:add_le(proto.fields.offset, buf(pos, 4), offset)
    data_tree = tree:add_le(proto.fields.dsize, buf(pos + 4, 2))
@@ -107,7 +106,7 @@ function dissect.struct_ptrs(seg, pos, count, segs, pkt, tree)
    end
 end
 
-local list_element_size = { 0, 1, 8, 16, 32, 64, "ptr", "composite"}
+local list_element_size = {0, 1, 8, 16, 32, 64, "ptr", "composite"}
 
 function dissect.list(seg, pos, segs, pkt, root)
    local buf = segs[seg]
@@ -115,7 +114,7 @@ function dissect.list(seg, pos, segs, pkt, root)
    local count = buf(pos + 4, 4):le_uint() / 8
    local esize = list_element_size[buf(pos + 4, 1):bitfield(5, 3) + 1]
 
-   local tree = root:add(proto.fields.list, buf(pos, 8))
+   local tree = root:add(buf(pos, 8), "list")
    tree:add(proto.fields.offset, buf(pos, 4), offset)
    tree:add(proto.fields.count, buf(pos + 4, 4), count)
    if type(esize) == "number" then
