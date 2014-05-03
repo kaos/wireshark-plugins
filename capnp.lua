@@ -62,7 +62,7 @@ function dissect.ptr(seg, pos, segs, pkt, root, sch, typ)
       local ref = segs[seg](pos, 8):tvb()
       print(table.concat(
                {"packet", pkt.number, seg, pos,
-                "unknown pointer", tostring(ref)}, " "))
+                "unknown (or NYI) pointer", tostring(ref)}, " "))
       data_dis:call(ref, pkt, root)
    end
 
@@ -70,6 +70,12 @@ function dissect.ptr(seg, pos, segs, pkt, root, sch, typ)
       dis = dissect.struct
    elseif kind == 1 then
       dis = dissect.list
+   elseif kind == 2 then
+      -- far ptr, NYI
+   elseif kind == 3 then
+      if segs[seg](pos, 4):le_uint() == 3 then
+         dis = dissect.cap
+      end
    end
 
    dis(seg, pos, segs, pkt, root, sch, typ)
@@ -126,4 +132,10 @@ function dissect.list(seg, pos, segs, pkt, root)
          tree:add(proto.fields.data, data)
       end
    end
+end
+
+function dissect.cap(seg, pos, segs, pkt, root)
+   local buf = segs[seg]
+   local idx = buf(pos + 4, 4):le_uint()
+   root:add(buf(pos, 8), "capability", idx)
 end
