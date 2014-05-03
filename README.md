@@ -10,7 +10,7 @@ INSTALL
 Make sure wireshark finds the plugins, i.e. by symlinking your
 wireshark plugin dir to this repo:
 
-   $ ln -s .../path/to/repo/wireshark-plugins ~/.wireshark/plugins
+```$ ln -s .../path/to/repo/wireshark-plugins ~/.wireshark/plugins```
 
 
 Plugins

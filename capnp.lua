@@ -14,13 +14,15 @@
 --   limitations under the License.
 --
 local proto = Proto("capnp", "Cap'n Proto RPC Protocol")
-proto.fields.segcount = ProtoField.uint32("capnp.segcount", "Segment count")
-proto.fields.segsize = ProtoField.uint32("capnp.segsize", "Segment size")
+proto.fields.count = ProtoField.uint32("capnp.count", "Count")
+proto.fields.size = ProtoField.uint32("capnp.size", "Size")
 proto.fields.struct = ProtoField.bytes("capnp.struct", "Struct")
-proto.fields.offset = ProtoField.int32("capnp.offset", "Offset") --, base.DEC, nil, 0xfffffffc)
+proto.fields.offset = ProtoField.int32("capnp.offset", "Offset")
 proto.fields.dsize = ProtoField.uint16("capnp.dsize", "Data size")
 proto.fields.psize = ProtoField.uint16("capnp.psize", "Pointers")
-proto.fields.data = ProtoField.bytes("capnp.data", "Data section")
+proto.fields.data = ProtoField.bytes("capnp.data", "Data")
+proto.fields.list = ProtoField.bytes("capnp.list", "List")
+proto.fields.text = ProtoField.string("capnp.text", "Text")
 
 local data_dis = Dissector.get("data")
 local dissect = {}
@@ -40,7 +42,7 @@ function dissect.message(buf, pkt, root)
    local count = buf(0,4):le_uint() + 1
    local data = buf(4 * (count + count % 2)):tvb()
    local segs = {}
-   local seg_tree = tree:add_le(proto.fields.segcount, buf(0,4), count)
+   local seg_tree = tree:add_le(proto.fields.count, buf(0,4), count)
 
    for i = 1, count do
       local b_size = buf(4 * i, 4)
@@ -48,7 +50,7 @@ function dissect.message(buf, pkt, root)
       segs[i-1] = data(0, size):tvb()
       data_dis:call(
          segs[i-1], pkt,
-         seg_tree:add_le(proto.fields.segsize, b_size))
+         seg_tree:add_le(proto.fields.size, b_size))
       data = data(size):tvb()
    end
 
@@ -67,6 +69,8 @@ function dissect.ptr(seg, pos, segs, pkt, root)
 
    if kind == 0 then
       dis = dissect.struct
+   elseif kind == 1 then
+      dis = dissect.list
    end
 
    dis(seg, pos, segs, pkt, root)
@@ -100,5 +104,27 @@ end
 function dissect.struct_ptrs(seg, pos, count, segs, pkt, tree)
    for i = 0, count - 1 do
       dissect.ptr(seg, pos + (i * 8), segs, pkt, tree)
+   end
+end
+
+local list_element_size = { 0, 1, 8, 16, 32, 64, "ptr", "composite"}
+
+function dissect.list(seg, pos, segs, pkt, root)
+   local buf = segs[seg]
+   local offset = math.floor(buf(pos, 4):le_int() / 4)
+   local count = buf(pos + 4, 4):le_uint() / 8
+   local esize = list_element_size[buf(pos + 4, 1):bitfield(5, 3) + 1]
+
+   local tree = root:add(proto.fields.list, buf(pos, 8))
+   tree:add(proto.fields.offset, buf(pos, 4), offset)
+   tree:add(proto.fields.count, buf(pos + 4, 4), count)
+   if type(esize) == "number" then
+      tree:add(proto.fields.size, buf(pos + 4, 1), esize)
+      local data = buf(pos + (offset + 1) * 8, (count * esize) / 8)
+      if esize == 8 then
+         tree:add(proto.fields.text, data, data:string())
+      else
+         tree:add(proto.fields.data, data)
+      end
    end
 end
