@@ -104,17 +104,22 @@ end
 
 function dissect.struct_data(buf, pkt, tree, sn)
    tree:add(proto.fields.data, buf)
+
    if sn.union then
       local tag = buf(sn.union.offset, 2)
       local value = sn.union[tag:le_uint()] or {}
       tree:add(tag, "union", value.name or "(unknown tag)")
-      local defs = sn[sn.union.typ]
-      if not defs then
-         defs = {}
-         sn[sn.union.typ] = defs
+      local def = value.def or sn.union.def
+      if def and def ~= "void" then
+         local defs = sn[def]
+         if not defs then
+            defs = {}
+            sn[def] = defs
+         end
+         defs[value.idx or sn.union.idx or (#defs + 1)] = value
       end
-      defs[sn.union.idx or (#defs + 1)] = value.typ
    end
+
    for k,v in ipairs(sn.data or {}) do
       local b = buf(v.offset, v.size)
       if v.typ == "uint" then
@@ -129,7 +134,7 @@ function dissect.struct_ptrs(seg, pos, count, segs, pkt, tree, sn)
    for i = 0, count - 1 do
       dissect.ptr(
          seg, pos + (i * 8), segs, pkt, tree,
-         schema(sn.ptr and sn.ptr[i] or ("ptr " .. tostring(i))))
+         schema(sn.ptr and sn.ptr[i].typ or ("ptr " .. tostring(i))))
    end
 end
 
@@ -173,16 +178,16 @@ local meta_schema = {
 
 setmetatable(schema, meta_schema)
 
-function schema.new(name, tab)
+function schema.add(name, tab)
    schema[name] = tab
    tab.name = name
 end
 
-schema.new(
+schema.add(
    "Message",
    {
       union = {
-         offset = 0, typ = "ptr", idx = 0,
+         offset = 0, def = "ptr", idx = 0,
 
          [0] = { name = "unimplemented", typ = "Message" },
          [1] = { name = "abort", typ = "Exception" },
@@ -202,28 +207,181 @@ schema.new(
    }
 )
 
-schema.new(
-   "Resolve",
+schema.add(
+   "Exception",
    {
-      union = {
-         offset = 4,
-         [0] = { name = "cap", typ = "CapDescriptor" },
-         [1] = { name = "exception", typ = "Exception" }
-      },
       data = {
-         { offset = 0, size = 4, typ = "uint", name = "promiseId" }
+         { offset = 0, size = 1, typ = "bool", name = "isCallersFault" },
+         { offset = 2, size = 2, typ = "Durability", name = "durability" }
+      },
+      ptr = {
+         [0] = { name = "reason", typ = "text" }
       }
    }
 )
 
-schema.new(
+schema.add(
+   "Call",
+   {
+      data = {
+         { offset = 0, size = 4, typ = "uint", name = "questionId" },
+         { offset = 8, size = 8, typ = "uint64", name = "interfaceId" },
+         { offset = 4, size = 2, typ = "uint", name = "methodId" },
+         { offset = 16, size = 1, typ = "bool", name = "allowThirdPartyTailCall" }
+      },
+      ptr = {
+         [0] = { name = "target", typ = "MessageTarget" },
+         [1] = { name = "params", typ = "Payload" }
+      },
+      union = {
+         offset = 6,
+         [0] = { name = "caller" },
+         [1] = { name = "yourself" },
+         [2] = { name = "thirdParty", def = "ptr", idx = 2, typ = "AnyPointer" }
+      }
+   }
+)
+
+schema.add(
+   "Return",
+   {
+      data = {
+         { offset = 0, size = 4, typ = "uint", name = "answerId" },
+         { offset = 4, size = 1, typ = "bool", name = "releaseParamCaps", default = 1 }
+      },
+      union = {
+         offset = 6, def = "ptr", idx = 0,
+         [0] = { name = "results", typ = "Payload" },
+         [1] = { name = "exception", typ = "Exception" },
+         [2] = { name = "canceled", def = "void" },
+         [3] = { name = "resultsSentElsewhere", def = "void" },
+         [4] = { name = "takeFromOtherQuestion", def = "data", offset = 8, size = 4, typ = "uint" },
+         [5] = { name = "acceptFromThirdParty", typ = "AnyPointer" }
+      }
+   }
+)
+
+schema.add(
+   "Finish",
+   {
+      data = {
+         { offset = 0, size = 4, typ = "uint", name = "questionId" },
+         { offset = 4, size = 1, typ = "bool", name = "releaseResultCaps", default = 1 }
+      }
+   }
+)
+
+schema.add(
+   "Resolve",
+   {
+      data = {
+         { offset = 0, size = 4, typ = "uint", name = "promiseId" }
+      },
+      union = {
+         offset = 4,
+         [0] = { name = "cap", typ = "CapDescriptor" },
+         [1] = { name = "exception", typ = "Exception" }
+      }
+   }
+)
+
+-- struct Release @0xad1a6c0d7dd07497 {  # 8 bytes, 0 ptrs, packed as 64-bit
+--   id @0 :UInt32;  # bits[0, 32)
+--   referenceCount @1 :UInt32;  # bits[32, 64)
+-- }
+-- struct Disembargo @0xf964368b0fbd3711 {  # 8 bytes, 1 ptrs
+--   target @0 :MessageTarget;  # ptr[0]
+--   context :group {
+--     union {  # tag bits [32, 48)
+--       senderLoopback @1 :UInt32;  # bits[0, 32), union tag = 0
+--       receiverLoopback @2 :UInt32;  # bits[0, 32), union tag = 1
+--       accept @3 :Void;  # bits[0, 0), union tag = 2
+--       provide @4 :UInt32;  # bits[0, 32), union tag = 3
+--     }
+--   }
+-- }
+-- struct Save @0xe40ef0b4b02e882c {  # 8 bytes, 1 ptrs
+--   questionId @0 :UInt32;  # bits[0, 32)
+--   target @1 :MessageTarget;  # ptr[0]
+-- }
+
+schema.add(
    "Restore",
    {
       data = {
          { offset = 0, size = 4, typ = "uint", name = "questionId"}
       },
       ptr = {
-         [0] = "SturdyRefObjectId"
+         [0] = { name = "objectId", typ = "SturdyRefObjectId" }
       }
    }
 )
+
+-- struct Delete @0x86267432565dee97 {  # 8 bytes, 1 ptrs
+--   questionId @0 :UInt32;  # bits[0, 32)
+--   objectId @1 :AnyPointer;  # ptr[0]
+-- }
+-- struct Provide @0x9c6a046bfbc1ac5a {  # 8 bytes, 2 ptrs
+--   questionId @0 :UInt32;  # bits[0, 32)
+--   target @1 :MessageTarget;  # ptr[0]
+--   recipient @2 :AnyPointer;  # ptr[1]
+-- }
+-- struct Accept @0xd4c9b56290554016 {  # 8 bytes, 1 ptrs
+--   questionId @0 :UInt32;  # bits[0, 32)
+--   provision @1 :AnyPointer;  # ptr[0]
+--   embargo @2 :Bool;  # bits[32, 33)
+-- }
+-- struct Join @0xfbe1980490e001af {  # 8 bytes, 2 ptrs
+--   questionId @0 :UInt32;  # bits[0, 32)
+--   target @1 :MessageTarget;  # ptr[0]
+--   keyPart @2 :AnyPointer;  # ptr[1]
+-- }
+-- struct MessageTarget @0x95bc14545813fbc1 {  # 8 bytes, 1 ptrs
+--   union {  # tag bits [32, 48)
+--     importedCap @0 :UInt32;  # bits[0, 32), union tag = 0
+--     promisedAnswer @1 :PromisedAnswer;  # ptr[0], union tag = 1
+--   }
+-- }
+-- struct Payload @0x9a0e61223d96743b {  # 0 bytes, 2 ptrs
+--   content @0 :AnyPointer;  # ptr[0]
+--   capTable @1 :List(CapDescriptor);  # ptr[1]
+-- }
+-- struct CapDescriptor @0x8523ddc40b86b8b0 {  # 8 bytes, 1 ptrs
+--   union {  # tag bits [0, 16)
+--     none @0 :Void;  # bits[0, 0), union tag = 0
+--     senderHosted @1 :UInt32;  # bits[32, 64), union tag = 1
+--     senderPromise @2 :UInt32;  # bits[32, 64), union tag = 2
+--     receiverHosted @3 :UInt32;  # bits[32, 64), union tag = 3
+--     receiverAnswer @4 :PromisedAnswer;  # ptr[0], union tag = 4
+--     thirdPartyHosted @5 :ThirdPartyCapDescriptor;  # ptr[0], union tag = 5
+--   }
+-- }
+-- struct PromisedAnswer @0xd800b1d6cd6f1ca0 {  # 8 bytes, 1 ptrs
+--   questionId @0 :UInt32;  # bits[0, 32)
+--   transform @1 :List(Op);  # ptr[0]
+--   struct Op @0xf316944415569081 {  # 8 bytes, 0 ptrs, packed as 32-bit
+--     union {  # tag bits [0, 16)
+--       noop @0 :Void;  # bits[0, 0), union tag = 0
+--       getPointerField @1 :UInt16;  # bits[16, 32), union tag = 1
+--     }
+--   }
+-- }
+-- struct SturdyRef @0xce8c7a90684b48ff {  # 0 bytes, 2 ptrs
+--   hostId @0 :AnyPointer;  # ptr[0]
+--   objectId @1 :AnyPointer;  # ptr[1]
+-- }
+-- struct ThirdPartyCapDescriptor @0xd37007fde1f0027d {  # 8 bytes, 1 ptrs
+--   id @0 :AnyPointer;  # ptr[0]
+--   vineId @1 :UInt32;  # bits[0, 32)
+-- }
+
+-- struct Exception @0xd625b7063acf691a {  # 8 bytes, 1 ptrs
+--   reason @0 :Text;  # ptr[0]
+--   isCallersFault @1 :Bool;  # bits[0, 1)
+--   durability @2 :Durability;  # bits[16, 32)
+--   enum Durability @0xbbaeda2607b6f958 {
+--     permanent @0;
+--     temporary @1;
+--     overloaded @2;
+--   }
+-- }
