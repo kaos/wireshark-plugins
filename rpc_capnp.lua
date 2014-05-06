@@ -5,9 +5,10 @@ local fourBytes = "fourBytes"
 local eightBytes = "eightBytes"
 local opaquePointer = "opaquePointer"
 
--- Notice: Lua doesn't support 64 bit values, so all the ID's are unusable..
+-- Notice: Lua doesn't support 64 bit values, but they are still
+-- comparable to each other, which will be good enough.
 
-return { nodes = {
+rpc_capnp = { nodes = {
     { id = 15376050949367520589,
       displayName = "/usr/local/include/capnp/rpc.capnp:Disembargo.context",
       displayNamePrefixLength = 46,

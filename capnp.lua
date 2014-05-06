@@ -20,6 +20,7 @@ proto.fields.data = ProtoField.bytes("capnp.data", "Data")
 proto.fields.text = ProtoField.string("capnp.text", "Text")
 
 local dissect = {}
+local fileNode, messageNode
 
 function proto.dissector(buf, pkt, root)
    if buf(0,1):bitfield(6, 2) == 0 then
@@ -50,10 +51,17 @@ function dissect.message(buf, pkt, tree)
       data = data(size):tvb()
    end
 
-   dissect.ptr(0, 0, segs, pkt, tree, "Root")
+   if not fileNode then
+      fileNode = schema.find(rpc_capnp.nodes, "id", rpc_capnp.requestedFiles[1].id)
+      local messageId = schema.find(fileNode.nestedNodes, "name", "Message").id
+      messageNode = schema.find(rpc_capnp.nodes, "id", messageId)
+      messageNode.name = "Message"
+   end
+
+   dissect.ptr(0, 0, segs, pkt, tree, messageNode)
 end
 
-function dissect.ptr(seg, pos, segs, pkt, tree, name)
+function dissect.ptr(seg, pos, segs, pkt, tree, node)
    local kind = segs[seg](pos, 1):bitfield(6, 2)
    local dis = function ()
       local ref = segs[seg](pos, 8):tvb()
@@ -65,7 +73,7 @@ function dissect.ptr(seg, pos, segs, pkt, tree, name)
    if kind == 0 then
       local null = tostring(segs[seg](pos,8):le_uint64()) == "0"
       if null then
-         tree:add(segs[seg](pos, 8), name, "= null")
+         tree:add(segs[seg](pos, 8), node.name, "= null")
          return
       else
          dis = dissect.struct
@@ -80,15 +88,15 @@ function dissect.ptr(seg, pos, segs, pkt, tree, name)
       end
    end
 
-   dis(seg, pos, segs, pkt, tree, name)
+   dis(seg, pos, segs, pkt, tree, node)
 end
 
-function dissect.struct(seg, pos, segs, pkt, root, name)
+function dissect.struct(seg, pos, segs, pkt, root, node)
    local buf = segs[seg]
    local offset = buf(pos, 4):le_int() / 4
    local dsize = buf(pos + 4, 2):le_uint()
    local psize = buf(pos + 6, 2):le_uint()
-   local tree = root:add(buf(pos, 8), name, "(struct)")
+   local tree = root:add(buf(pos, 8), node.name, "(struct)")
 
    tree:add(buf(pos, 4), "Data offset:", offset)
    data_tree = tree:add(buf(pos + 4, 2), "Data (", dsize, "words )")
@@ -109,19 +117,19 @@ end
 
 function dissect.struct_ptrs(seg, pos, count, segs, pkt, tree)
    for i = 0, count - 1 do
-      dissect.ptr(seg, pos + (i * 8), segs, pkt, tree, "Pointer " .. tostring(i))
+      dissect.ptr(seg, pos + (i * 8), segs, pkt, tree, { name = "Pointer " .. tostring(i) })
    end
 end
 
 local list_element_size = {0, 1, 8, 16, 32, 64, "ptr", "composite"}
 
-function dissect.list(seg, pos, segs, pkt, root, name)
+function dissect.list(seg, pos, segs, pkt, root, node)
    local buf = segs[seg]
    local offset = math.floor(buf(pos, 4):le_int() / 4)
    local count = math.floor(buf(pos + 4, 4):le_uint() / 8)
    local esize = list_element_size[buf(pos + 4, 1):bitfield(5, 3) + 1]
 
-   local tree = root:add(buf(pos, 8), name, "(list)")
+   local tree = root:add(buf(pos, 8), node.name, "(list)")
    tree:add(buf(pos, 4), "Offset:", offset)
    tree:add(buf(pos + 4, 4), "Count:", count)
    tree:add(buf(pos + 4, 1), "Element size:", esize)
@@ -131,15 +139,15 @@ function dissect.list(seg, pos, segs, pkt, root, name)
       if esize == 8 then
          local text = data:string()
          tree:add(proto.fields.text, data, text)
-         tree:set_text(name .. " = " .. text)
+         tree:set_text(node.name .. " = " .. text)
       else
          tree:add(proto.fields.data, data)
       end
    end
 end
 
-function dissect.cap(seg, pos, segs, pkt, root, name)
+function dissect.cap(seg, pos, segs, pkt, root, node)
    local buf = segs[seg]
    local idx = buf(pos + 4, 4):le_uint()
-   root:add(buf(pos, 8), name .. ":", "Capability (index) =", idx)
+   root:add(buf(pos, 8), node.name .. ":", "Capability (index) =", idx)
 end
