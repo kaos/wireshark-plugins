@@ -26,9 +26,9 @@ function proto.dissector(buf, pkt, root)
    if buf(0,1):bitfield(6, 2) == 0 then
       pkt.cols.protocol:set("CAPNP")
       local tree = root:add(proto, buf(0))
-      local Root, Extra = dissect.message(buf, pkt, tree)
-      if Root then
-         tree:append_text(": " .. Root .. tostring(Extra))
+      local root, extra = dissect.message(buf, pkt, tree)
+      if root then
+         tree:append_text(": " .. root .. tostring(extra))
       end
    end
 end
@@ -58,7 +58,7 @@ function dissect.message(buf, pkt, tree)
       messageNode = schema.find(rpc_capnp.nodes, "id", messageId)
    end
 
-   return dissect.ptr(0, 0, segs, pkt, tree, messageNode)
+   return dissect.ptr(0, 0, segs, pkt, tree:add(segs[0](0,8), "Root"), messageNode)
 end
 
 function dissect.ptr(seg, pos, segs, pkt, tree, node)
@@ -91,7 +91,7 @@ function dissect.ptr(seg, pos, segs, pkt, tree, node)
    return dis(seg, pos, segs, pkt, tree, node)
 end
 
-function dissect.struct(seg, pos, segs, pkt, root, node)
+function dissect.struct(seg, pos, segs, pkt, tree, node)
    local buf = segs[seg]
    local offset = buf(pos, 4):le_int() / 4
    local dsize = buf(pos + 4, 2):le_uint()
@@ -102,9 +102,8 @@ function dissect.struct(seg, pos, segs, pkt, root, node)
    local discriminantValue, discriminantField
       = dissect.struct_discriminant(b_data, node.struct)
 
-   local tree = root:add(
-      buf(pos, 8), node.name,
-      discriminantField and ": union " .. discriminantField.name)
+
+   tree:append_text(": " .. node.name .. (discriminantField and ", union: " .. discriminantField.name or ""))
 
    local struct_tree = tree:add("(raw struct)")
    struct_tree:add(buf(pos, 4), "Data offset:", offset)
@@ -122,7 +121,7 @@ function dissect.struct(seg, pos, segs, pkt, root, node)
          buf(pos + (offset + 1) * 8, (dsize + psize) * 8),
          "Fields")
       dissect.struct_fields(
-         b_data, ptr_offset, psize, discriminantValue,
+         b_data, b_ptr, ptr_offset, psize, discriminantValue,
          seg, segs, pkt, fields_tree, node.struct.fields)
    end
 
@@ -142,7 +141,7 @@ function dissect.struct_discriminant(buf, struct)
 end
 
 -- Notice: only default values for bool fields are currently implemented!
-function dissect.struct_fields(b_data, ptrs, psize, discriminant,
+function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
                                seg, segs, pkt, tree, fields)
    for _, f in ipairs(fields) do
       repeat
@@ -155,15 +154,27 @@ function dissect.struct_fields(b_data, ptrs, psize, discriminant,
                = dissect.struct_discriminant(b_data, group.struct)
             dissect.struct_fields(
                b_data, ptrs, psize, group_discriminantValue, seg, segs, pkt,
-               tree:add(f.name, group_discriminantField and ": union " .. group_discriminantField.name),
+               tree:add(f.name, group_discriminantField and ", union: " .. group_discriminantField.name),
                group.struct.fields)
          else
             local typ, val = next(f.slot.type)
             if typ == "struct" then
                if f.slot.offset < psize then
                   dissect.ptr(
-                     seg, ptrs + (f.slot.offset * 8), segs, pkt, tree,
+                     seg, ptrs + (f.slot.offset * 8), segs, pkt,
+                     tree:add(b_ptr(f.slot.offset * 8, 8), f.name),
                      schema.find(rpc_capnp.nodes, "id", val.typeId))
+               else
+                  tree:add(f.name .. ":", "(no data)")
+               end
+            elseif typ == "list" then
+               if f.slot.offset < psize then
+                  -- todo: support other lists too, not only list of structs...
+                  local list_schema = schema.find(rpc_capnp.nodes, "id", val.elementType.struct.typeId)
+                  dissect.ptr(
+                     seg, ptrs + (f.slot.offset * 8), segs, pkt,
+                     tree:add(b_ptr(f.slot.offset * 8, 8), f.name),
+                     list_schema)
                else
                   tree:add(f.name .. ":", "(no data)")
                end
@@ -213,13 +224,13 @@ end
 
 local list_element_size = {0, 1, 8, 16, 32, 64, "ptr", "composite"}
 
-function dissect.list(seg, pos, segs, pkt, root, node)
+function dissect.list(seg, pos, segs, pkt, tree, node)
    local buf = segs[seg]
    local offset = math.floor(buf(pos, 4):le_int() / 4)
    local count = math.floor(buf(pos + 4, 4):le_uint() / 8)
    local esize = list_element_size[buf(pos + 4, 1):bitfield(5, 3) + 1]
+   local node_text = ": " .. node.name .. " (list)"
 
-   local tree = root:add(buf(pos, 8), node.name, "(list)")
    tree:add(buf(pos, 4), "Offset:", offset)
    tree:add(buf(pos + 4, 4), "Count:", count)
    tree:add(buf(pos + 4, 1), "Element size:", esize)
@@ -229,15 +240,20 @@ function dissect.list(seg, pos, segs, pkt, root, node)
       if esize == 8 then
          local text = data:string()
          tree:add(proto.fields.text, data, text)
-         tree:set_text(node.name .. " = " .. text)
+         node_text = ": " .. node.name .. " = " .. text
       else
          tree:add(proto.fields.data, data)
       end
+   else
+      tree:add(esize, "<todo>")
    end
+
+   tree:append_text(node_text)
 end
 
-function dissect.cap(seg, pos, segs, pkt, root, node)
+function dissect.cap(seg, pos, segs, pkt, tree, node)
    local buf = segs[seg]
    local idx = buf(pos + 4, 4):le_uint()
-   root:add(buf(pos, 8), node.name .. ":", "Capability (index) =", idx)
+   tree:append_text(": " .. node.name .. " = " .. tostring(idx))
+   tree:add(buf(pos + 4, 4), "Capability (index):", idx)
 end
