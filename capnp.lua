@@ -73,7 +73,7 @@ function dissect.ptr(seg, pos, segs, pkt, tree, node)
    if kind == 0 then
       local null = tostring(segs[seg](pos,8):le_uint64()) == "0"
       if null then
-         tree:add(segs[seg](pos, 8), node.name, "= null")
+         tree:append_text(": " .. node.name .. " = null")
          return
       else
          dis = dissect.struct
@@ -123,6 +123,13 @@ function dissect.struct(seg, pos, segs, pkt, tree, node)
       dissect.struct_fields(
          b_data, b_ptr, ptr_offset, psize, discriminantValue,
          seg, segs, pkt, fields_tree, node.struct.fields)
+   else
+      for i = 0, psize - 1 do
+         dissect.ptr(
+            seg, ptr_offset + (i * 8), segs, pkt,
+            ptr_tree:add(b_ptr(i * 8, 8), "Pointer", i),
+            { name = "<opaque pointer>" })
+      end
    end
 
    return node.name, discriminantField and ", " .. discriminantField.name
