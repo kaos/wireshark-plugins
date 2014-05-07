@@ -153,8 +153,10 @@ function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
             local group_discriminantValue, group_discriminantField
                = dissect.struct_discriminant(b_data, group.struct)
             dissect.struct_fields(
-               b_data, ptrs, psize, group_discriminantValue, seg, segs, pkt,
-               tree:add(f.name, group_discriminantField and ", union: " .. group_discriminantField.name),
+               b_data, b_ptr, ptrs, psize, group_discriminantValue,
+               seg, segs, pkt,
+               tree:add(f.name .. (group_discriminantField and ", union: "
+                                      .. group_discriminantField.name or "")),
                group.struct.fields)
          else
             local typ, val = next(f.slot.type)
@@ -175,6 +177,15 @@ function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
                      seg, ptrs + (f.slot.offset * 8), segs, pkt,
                      tree:add(b_ptr(f.slot.offset * 8, 8), f.name),
                      list_schema)
+               else
+                  tree:add(f.name .. ":", "(no data)")
+               end
+            elseif typ == "anyPointer" then
+               if f.slot.offset < psize then
+                  dissect.ptr(
+                     seg, ptrs + (f.slot.offset * 8), segs, pkt,
+                     tree:add(b_ptr(f.slot.offset * 8, 8), f.name),
+                     { name = "AnyPointer" })
                else
                   tree:add(f.name .. ":", "(no data)")
                end
@@ -213,7 +224,6 @@ function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
                else
                   tree:add(f.name .. ":", "(no data)")
                end
-            --elseif typ == "" then
             else
                tree:add(f.name .. ":", "<field type not dissected>", typ)
             end
