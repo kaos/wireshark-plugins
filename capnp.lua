@@ -103,9 +103,8 @@ function dissect.struct(seg, pos, segs, pkt, root, node)
       = dissect.struct_discriminant(b_data, node.struct)
 
    local tree = root:add(
-      buf(pos, 8), node.name, "(struct)",
-      discriminantField and ": union " .. discriminantField.name
-         .. " (" .. next(discriminantField.slot.type) .. ")")
+      buf(pos, 8), node.name,
+      discriminantField and ": union " .. discriminantField.name)
 
    local struct_tree = tree:add("(raw struct)")
    struct_tree:add(buf(pos, 4), "Data offset:", offset)
@@ -119,7 +118,9 @@ function dissect.struct(seg, pos, segs, pkt, root, node)
    end
 
    if node.struct then
-      local fields_tree = tree:add("Fields")
+      local fields_tree = tree:add(
+         buf(pos + (offset + 1) * 8, (dsize + psize) * 8),
+         "Fields")
       dissect.struct_fields(
          b_data, ptr_offset, psize, discriminantValue,
          seg, segs, pkt, fields_tree, node.struct.fields)
@@ -148,75 +149,52 @@ function dissect.struct_fields(b_data, ptrs, psize, discriminant,
             f.discriminantValue ~= discriminant
          then break end
          if f.group then
-            tree:add("Group:", f.name, f.group.typeId)
-         elseif f.slot.type.struct then
-            if f.slot.offset < psize then
-               dissect.ptr(
-                  seg, ptrs + (f.slot.offset * 8), segs, pkt, tree,
-                  schema.find(rpc_capnp.nodes, "id", f.slot.type.struct.typeId))
-            end
+            local group = schema.find(rpc_capnp.nodes, "id", f.group.typeId)
+            local group_discriminantValue, group_discriminantField
+               = dissect.struct_discriminant(b_data, group.struct)
+            dissect.struct_fields(
+               b_data, ptrs, psize, group_discriminantValue, seg, segs, pkt,
+               tree:add(f.name, group_discriminantField and ": union " .. group_discriminantField.name),
+               group.struct.fields)
          else
-            tree:add(f.name, next(f.slot.type))
-         end
-      until true
-   end
-end
-
-function dissect.struct_data(buf, pkt, tree, data_tree, node)
-   data_tree:add(buf(0), "Data (", buf:len(), "bytes )")
-   local struct = node.struct
-   if not struct then return end
-   local b_discriminant = buf(struct.discriminantOffset * 2, 2)
-   local discriminant = struct.discriminantCount > 0
-      and b_discriminant:le_uint()
-
-   for _, f in ipairs(struct.fields) do
-      repeat
-         if f.discriminantValue == discriminant then
-            tree:append_text(": " .. f.name)
-            data_tree:add(b_discriminant, "union:", f.name, "(", next(f.slot.type), ")")
-         elseif f.discriminantValue < 0xffff then
-            break
-         end
-         if not f.slot then break end -- this field has a group type instead..
-         local typ, val = next(f.slot.type)
-         local data, value
-         if typ == "uint16" then
-            data = buf(f.slot.offset * 2, 2)
-            value = data:le_uint()
-         elseif typ == "uint32" then
-            data = buf(f.slot.offset * 4, 4)
-            value = data:le_uint()
-         else
-            break
-         end
-
-         data_tree:add(data, f.name .. ":", value)
-      until true
-   end
-   return discriminant
-end
-
-function dissect.struct_ptrs(seg, pos, count, segs, pkt, tree, discriminant, node)
-   local struct = node.struct
-   local ptrNode
-   for i = 0, count - 1 do
-      if struct then
-         for _, f in ipairs(struct.fields) do
-            if f.slot and f.slot.offset == i and
-               (f.discriminantValue == discriminant or
-                f.discriminantValue == 0xffff)
-            then
-               local typ, val = next(f.slot.type)
-               if typ == "struct" then
-                  ptrNode = schema.find(rpc_capnp.nodes, "id", val.typeId)
+            local typ, val = next(f.slot.type)
+            if typ == "struct" then
+               if f.slot.offset < psize then
+                  dissect.ptr(
+                     seg, ptrs + (f.slot.offset * 8), segs, pkt, tree,
+                     schema.find(rpc_capnp.nodes, "id", val.typeId))
+               else
+                  tree:add(f.name .. ":", "(no data)")
                end
+            elseif typ == "interface" then
+               tree:add(f.name, "<todo>", typ)
+            elseif typ == "void" then
+               tree:add(f.name .. ":", "(void)")
+            --elseif typ == "bool" then
+            elseif string.sub(typ, 1, 3) == "int" then
+               local size = tonumber(string.sub(typ, 4)) / 8
+               if (f.slot.offset + 1) * size <= b_data:len() then
+                  local b = b_data(f.slot.offset * size, size)
+                  local v = size < 8 and b:le_int() or tostring(b:le_int64())
+                  tree:add(b, f.name .. ":", v)
+               else
+                  tree:add(f.name .. ":", "(no data)")
+               end
+            elseif string.sub(typ, 1, 4) == "uint" then
+               local size = tonumber(string.sub(typ, 5)) / 8
+               if (f.slot.offset + 1) * size <= b_data:len() then
+                  local b = b_data(f.slot.offset * size, size)
+                  local v = size < 8 and b:le_uint() or tostring(b:le_uint64())
+                  tree:add(b, f.name .. ":", v)
+               else
+                  tree:add(f.name .. ":", "(no data)")
+               end
+            --elseif typ == "" then
+            else
+               tree:add(f.name .. ":", "<field type not dissected>", typ)
             end
          end
-      end
-
-      dissect.ptr(seg, pos + (i * 8), segs, pkt, tree,
-                  ptrNode or { name = "Pointer " .. tostring(i) })
+      until true
    end
 end
 
