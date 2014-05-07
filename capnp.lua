@@ -91,9 +91,9 @@ function dissect.ptr(seg, pos, segs, pkt, tree, node)
    return dis(seg, pos, segs, pkt, tree, node)
 end
 
-function dissect.struct(seg, pos, segs, pkt, tree, node)
+function dissect.struct(seg, pos, segs, pkt, tree, node, override_offset)
    local buf = segs[seg]
-   local offset = buf(pos, 4):le_int() / 4
+   local offset = override_offset or buf(pos, 4):le_int() / 4
    local dsize = buf(pos + 4, 2):le_uint()
    local psize = buf(pos + 6, 2):le_uint()
    local b_data = buf(pos + (offset + 1) * 8, dsize * 8):tvb()
@@ -166,74 +166,9 @@ function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
                                       .. group_discriminantField.name or "")),
                group.struct.fields)
          else
-            local typ, val = next(f.slot.type)
-            if typ == "struct" then
-               if f.slot.offset < psize then
-                  dissect.ptr(
-                     seg, ptrs + (f.slot.offset * 8), segs, pkt,
-                     tree:add(b_ptr(f.slot.offset * 8, 8), f.name),
-                     schema.find(rpc_capnp.nodes, "id", val.typeId))
-               else
-                  tree:add(f.name .. ":", "(no data)")
-               end
-            elseif typ == "list" then
-               if f.slot.offset < psize then
-                  -- todo: support other lists too, not only list of structs...
-                  local list_schema = schema.find(rpc_capnp.nodes, "id", val.elementType.struct.typeId)
-                  dissect.ptr(
-                     seg, ptrs + (f.slot.offset * 8), segs, pkt,
-                     tree:add(b_ptr(f.slot.offset * 8, 8), f.name),
-                     list_schema)
-               else
-                  tree:add(f.name .. ":", "(no data)")
-               end
-            elseif typ == "anyPointer" then
-               if f.slot.offset < psize then
-                  dissect.ptr(
-                     seg, ptrs + (f.slot.offset * 8), segs, pkt,
-                     tree:add(b_ptr(f.slot.offset * 8, 8), f.name),
-                     { name = "AnyPointer" })
-               else
-                  tree:add(f.name .. ":", "(no data)")
-               end
-            elseif typ == "interface" then
-               tree:add(f.name, "<todo>", typ)
-            elseif typ == "void" then
-               tree:add(f.name .. ":", "(void)")
-            elseif typ == "bool" then
-               local off, bit = math.modf(f.slot.offset / 8)
-               if off < b_data:len() then
-                  local b = b_data(off, 1)
-                  local v = b:bitfield(7 - (bit * 8), 1)
-                  local value = v == 1
-                  if f.slot.defaultValue.bool then
-                     value = not value
-                  end
-                  tree:add(b, f.name .. ":", tostring(value))
-               else
-                  tree:add(f.name .. ":", "(no data)")
-               end
-            elseif string.sub(typ, 1, 3) == "int" then
-               local size = tonumber(string.sub(typ, 4)) / 8
-               if (f.slot.offset + 1) * size <= b_data:len() then
-                  local b = b_data(f.slot.offset * size, size)
-                  local v = size < 8 and b:le_int() or tostring(b:le_int64())
-                  tree:add(b, f.name .. ":", v)
-               else
-                  tree:add(f.name .. ":", "(no data)")
-               end
-            elseif string.sub(typ, 1, 4) == "uint" then
-               local size = tonumber(string.sub(typ, 5)) / 8
-               if (f.slot.offset + 1) * size <= b_data:len() then
-                  local b = b_data(f.slot.offset * size, size)
-                  local v = size < 8 and b:le_uint() or tostring(b:le_uint64())
-                  tree:add(b, f.name .. ":", v)
-               else
-                  tree:add(f.name .. ":", "(no data)")
-               end
-            else
-               tree:add(f.name .. ":", "<field type not dissected>", typ)
-            end
+            dissect.data(
+               f.slot.type, f.slot.offset, seg, segs, b_data, b_ptr,
+               psize, ptrs, pkt, tree, f.name, f.slot.defaultValue)
          end
       until true
    end
@@ -244,25 +179,48 @@ local list_element_size = {0, 1, 8, 16, 32, 64, "ptr", "composite"}
 function dissect.list(seg, pos, segs, pkt, tree, node)
    local buf = segs[seg]
    local offset = math.floor(buf(pos, 4):le_int() / 4)
+   local data_pos = pos + (offset + 1) * 8
    local count = math.floor(buf(pos + 4, 4):le_uint() / 8)
    local esize = list_element_size[buf(pos + 4, 1):bitfield(5, 3) + 1]
-   local node_text = ": " .. node.name .. " (list)"
+   local node_text = ": " .. tostring(count) .. " item" .. count == 1 and "" or "s"
 
    tree:add(buf(pos, 4), "Offset:", offset)
-   tree:add(buf(pos + 4, 4), "Count:", count)
+   tree:add(buf(pos + 4, 4), "Count/Words:", count)
    tree:add(buf(pos + 4, 1), "Element size:", esize)
 
    if type(esize) == "number" then
-      local data = buf(pos + (offset + 1) * 8, (count * esize) / 8)
+      local data = buf(data_pos, (count * esize) / 8)
       if esize == 8 then
-         local text = data:string()
+         local text = string.format("%q", data:string())
          tree:add(proto.fields.text, data, text)
          node_text = ": " .. node.name .. " = " .. text
-      else
-         tree:add(proto.fields.data, data)
+      elseif count > 0 and esize > 0 then
+         local item_tree = tree:add(proto.fields.data, data)
+         for i = 0, count - 1 do
+            dissect.data(
+               node, i, seg, segs, data, nil, 0, 0,
+               pkt, item_tree, tostring(i))
+         end
       end
-   else
-      tree:add(esize, "<todo>")
+   elseif esize == "ptr" then
+      local data = buf(data_pos, count * 8)
+      local item_tree = tree:add(data, "Items (", data:len(), "bytes )")
+      for i = 0, count - 1 do
+         dissect.data(
+            node, i, seg, segs, nil, data, count,
+            data_pos, pkt, tree, tostring(i)
+         )
+      end
+   elseif esize == "composite" then
+      local data = buf(data_pos, (count + 1) * 8)
+      local item_tree = tree:add(data, "Items (", data:len(), "bytes )")
+      local struct = schema.find(rpc_capnp.nodes, "id", node.struct.typeId)
+      count = data(0, 4):le_int() / 4
+      for i = 0, count - 1 do
+         dissect.struct(
+            seg, data_pos, segs, pkt,
+            item_tree:add(tostring(i)), struct, i)
+      end
    end
 
    tree:append_text(node_text)
@@ -273,4 +231,75 @@ function dissect.cap(seg, pos, segs, pkt, tree, node)
    local idx = buf(pos + 4, 4):le_uint()
    tree:append_text(": " .. node.name .. " = " .. tostring(idx))
    tree:add(buf(pos + 4, 4), "Capability (index):", idx)
+end
+
+function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
+                      pkt, tree, name, default_value)
+   local typ, val = next(data_type)
+
+   if typ == "struct" then
+      if offset < psize then
+         dissect.ptr(
+            seg, ptrs + (offset * 8), segs, pkt,
+            tree:add(b_ptr(offset * 8, 8), name),
+            schema.find(rpc_capnp.nodes, "id", val.typeId))
+      else
+         tree:add(name .. ":", "(no data)")
+      end
+   elseif typ == "list" then
+      if offset < psize then
+         dissect.ptr(
+            seg, ptrs + (offset * 8), segs, pkt,
+            tree:add(b_ptr(offset * 8, 8), name),
+            val.elementType)
+      else
+         tree:add(name .. ":", "(no data)")
+      end
+   elseif typ == "anyPointer" then
+      if offset < psize then
+         dissect.ptr(
+            seg, ptrs + (offset * 8), segs, pkt,
+            tree:add(b_ptr(offset * 8, 8), name),
+            { name = "AnyPointer" })
+      else
+         tree:add(name .. ":", "(no data)")
+      end
+   elseif typ == "interface" then
+      tree:add(name, "<todo>", typ)
+   elseif typ == "void" then
+      tree:add(name .. ":", "(void)")
+   elseif typ == "bool" then
+      local off, bit = math.modf(offset / 8)
+      if off < b_data:len() then
+         local b = b_data(off, 1)
+         local v = b:bitfield(7 - (bit * 8), 1)
+         local value = v == 1
+         if default_value and default_value.bool then
+            value = not value
+         end
+         tree:add(b, name .. ":", tostring(value))
+      else
+         tree:add(name .. ":", "(no data)")
+      end
+   elseif string.sub(typ, 1, 3) == "int" then
+      local size = tonumber(string.sub(typ, 4)) / 8
+      if (offset + 1) * size <= b_data:len() then
+         local b = b_data(offset * size, size)
+         local v = size < 8 and b:le_int() or tostring(b:le_int64())
+         tree:add(b, name .. ":", v)
+      else
+         tree:add(name .. ":", "(no data)")
+      end
+   elseif string.sub(typ, 1, 4) == "uint" then
+      local size = tonumber(string.sub(typ, 5)) / 8
+      if (offset + 1) * size <= b_data:len() then
+         local b = b_data(offset * size, size)
+         local v = size < 8 and b:le_uint() or tostring(b:le_uint64())
+         tree:add(b, name .. ":", v)
+      else
+         tree:add(name .. ":", "(no data)")
+      end
+   else
+      tree:add(name .. ":", "<field type not dissected>", typ)
+   end
 end
