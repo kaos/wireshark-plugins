@@ -26,9 +26,10 @@ function proto.dissector(buf, pkt, root)
    if buf(0,1):bitfield(6, 2) == 0 then
       pkt.cols.protocol:set("CAPNP")
       local tree = root:add(proto, buf(0))
-      dissect.message(buf, pkt, tree)
-      --this works nicely
-      --tree:append_text(": Message...")
+      local Root, Extra = dissect.message(buf, pkt, tree)
+      if Root then
+         tree:append_text(": " .. Root .. tostring(Extra))
+      end
    end
 end
 
@@ -57,7 +58,7 @@ function dissect.message(buf, pkt, tree)
       messageNode = schema.find(rpc_capnp.nodes, "id", messageId)
    end
 
-   dissect.ptr(0, 0, segs, pkt, tree, messageNode)
+   return dissect.ptr(0, 0, segs, pkt, tree, messageNode)
 end
 
 function dissect.ptr(seg, pos, segs, pkt, tree, node)
@@ -87,7 +88,7 @@ function dissect.ptr(seg, pos, segs, pkt, tree, node)
       end
    end
 
-   dis(seg, pos, segs, pkt, tree, node)
+   return dis(seg, pos, segs, pkt, tree, node)
 end
 
 function dissect.struct(seg, pos, segs, pkt, root, node)
@@ -95,21 +96,70 @@ function dissect.struct(seg, pos, segs, pkt, root, node)
    local offset = buf(pos, 4):le_int() / 4
    local dsize = buf(pos + 4, 2):le_uint()
    local psize = buf(pos + 6, 2):le_uint()
-   local tree = root:add(buf(pos, 8), node.name, "(struct)")
-   local discriminant
+   local b_data = buf(pos + (offset + 1) * 8, dsize * 8):tvb()
+   local ptr_offset = pos + (dsize + offset + 1) * 8
+   local b_ptr = buf(ptr_offset, psize * 8):tvb()
+   local discriminantValue, discriminantField
+      = dissect.struct_discriminant(b_data, node.struct)
 
-   tree:add(buf(pos, 4), "Data offset:", offset)
-   local data_tree = tree:add(buf(pos + 4, 2), "Data (", dsize, "words )")
+   local tree = root:add(
+      buf(pos, 8), node.name, "(struct)",
+      discriminantField and ": union " .. discriminantField.name
+         .. " (" .. next(discriminantField.slot.type) .. ")")
+
+   local struct_tree = tree:add("(raw struct)")
+   struct_tree:add(buf(pos, 4), "Data offset:", offset)
+   local data_tree = struct_tree:add(buf(pos + 4, 2), "Data (", dsize, "words )")
    if dsize > 0 then
-      discriminant = dissect.struct_data(
-         buf(pos + (offset + 1) * 8, dsize * 8):tvb(),
-         pkt, tree, data_tree, node)
+      data_tree:add(b_data(0), "Data (", b_data:len(), "bytes )")
    end
-   dissect.struct_ptrs(
-      seg, pos + (offset + dsize + 1) * 8,
-      psize, segs, pkt,
-      tree:add(buf(pos + 6, 2), "Pointers:", psize),
-      discriminant, node)
+   local ptr_tree = struct_tree:add(buf(pos + 6, 2), "Pointers:", psize)
+   if psize > 0 then
+         ptr_tree:add(b_ptr(0), "Data (", b_ptr:len(), "bytes )")
+   end
+
+   if node.struct then
+      local fields_tree = tree:add("Fields")
+      dissect.struct_fields(
+         b_data, ptr_offset, psize, discriminantValue,
+         seg, segs, pkt, fields_tree, node.struct.fields)
+   end
+
+   return node.name, discriminantField and ", " .. discriminantField.name
+end
+
+function dissect.struct_discriminant(buf, struct)
+   local discriminant = struct and struct.discriminantCount > 0
+      and buf(struct.discriminantOffset * 2, 2):le_uint()
+   if discriminant then
+      for _, f in ipairs(struct.fields) do
+         if f.discriminantValue == discriminant then
+            return discriminant, f
+         end
+      end
+   end
+end
+
+function dissect.struct_fields(b_data, ptrs, psize, discriminant,
+                               seg, segs, pkt, tree, fields)
+   for _, f in ipairs(fields) do
+      repeat
+         if f.discriminantValue < 0xffff and
+            f.discriminantValue ~= discriminant
+         then break end
+         if f.group then
+            tree:add("Group:", f.name, f.group.typeId)
+         elseif f.slot.type.struct then
+            if f.slot.offset < psize then
+               dissect.ptr(
+                  seg, ptrs + (f.slot.offset * 8), segs, pkt, tree,
+                  schema.find(rpc_capnp.nodes, "id", f.slot.type.struct.typeId))
+            end
+         else
+            tree:add(f.name, next(f.slot.type))
+         end
+      until true
+   end
 end
 
 function dissect.struct_data(buf, pkt, tree, data_tree, node)
