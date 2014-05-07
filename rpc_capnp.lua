@@ -1,8 +1,8 @@
 -- fake atoms
 local void = "void"
 local inlineComposite = "inlineComposite"
-local fourBytes = "fourBytes"
-local eightBytes = "eightBytes"
+local fourBytes = 4
+local eightBytes = 8
 local opaquePointer = "opaquePointer"
 
 -- Notice: Lua doesn't support 64 bit values, but they are still
