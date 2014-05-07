@@ -185,10 +185,10 @@ function dissect.list(seg, pos, segs, pkt, tree, node)
    local node_text
 
    tree:add(buf(pos, 4), "Offset:", offset)
-   tree:add(buf(pos + 4, 4), "Count/Words:", count)
    tree:add(buf(pos + 4, 1), "Element size:", esize)
 
    if type(esize) == "number" then
+      tree:add(buf(pos + 4, 4), "Count:", count)
       local data = buf(data_pos, (count * esize) / 8)
       if esize == 8 and not node.struct then
          local text = string.format("%q", data:string())
@@ -207,6 +207,7 @@ function dissect.list(seg, pos, segs, pkt, tree, node)
          end
       end
    elseif esize == "ptr" then
+      tree:add(buf(pos + 4, 4), "Count:", count)
       local data = buf(data_pos, count * 8)
       local item_tree = tree:add(data, "Items (", data:len(), "bytes )")
       for i = 0, count - 1 do
@@ -216,14 +217,20 @@ function dissect.list(seg, pos, segs, pkt, tree, node)
          )
       end
    elseif esize == "composite" then
-      local data = buf(data_pos, (count + 1) * 8)
-      local item_tree = tree:add(data, "Items (", data:len(), "bytes )")
-      local struct = schema.find(rpc_capnp.nodes, "id", node.struct.typeId)
+      local data = buf(data_pos, (count + 1) * 8):tvb()
+      local words = count
       count = data(0, 4):le_int() / 4
+      tree:add(data(0, 4), "Count:", count)
+         :add(buf(pos + 4, 4), "Words:", words)
+
+      local item_tree = tree:add(data(8), "Items (", words * 8, "bytes )")
+      local struct = node.struct and schema.find(rpc_capnp.nodes, "id", node.struct.typeId) or node
+      local size = words / count
+      item_tree:add(data(0, 8), "Tag:", struct.name)
       for i = 0, count - 1 do
          dissect.struct(
             seg, data_pos, segs, pkt,
-            item_tree:add(tostring(i)), struct, i)
+            item_tree:add(tostring(i)), struct, i * size)
       end
    end
 
