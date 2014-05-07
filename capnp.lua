@@ -99,11 +99,6 @@ function dissect.struct(seg, pos, segs, pkt, tree, node, override_offset)
    local b_data = buf(pos + (offset + 1) * 8, dsize * 8):tvb()
    local ptr_offset = pos + (dsize + offset + 1) * 8
    local b_ptr = buf(ptr_offset, psize * 8):tvb()
-   local discriminantValue, discriminantField
-      = dissect.struct_discriminant(b_data, node.struct)
-
-
-   tree:append_text(": " .. node.name .. (discriminantField and ", union: " .. discriminantField.name or ""))
 
    local struct_tree = tree:add("(raw struct)")
    struct_tree:add(buf(pos, 4), "Data offset:", offset)
@@ -115,6 +110,12 @@ function dissect.struct(seg, pos, segs, pkt, tree, node, override_offset)
    if psize > 0 then
          ptr_tree:add(b_ptr(0), "Data (", b_ptr:len(), "bytes )")
    end
+
+   local discriminantValue, discriminantField
+      = dissect.struct_discriminant(b_data, node.struct, data_tree)
+
+
+   tree:append_text(": " .. node.name .. (discriminantField and ", union: " .. discriminantField.name or ""))
 
    if node.struct then
       local fields_tree = tree:add(
@@ -135,13 +136,16 @@ function dissect.struct(seg, pos, segs, pkt, tree, node, override_offset)
    return node.name, discriminantField and ", " .. discriminantField.name
 end
 
-function dissect.struct_discriminant(buf, struct)
+function dissect.struct_discriminant(buf, struct, tree, label)
    local discriminant = struct and struct.discriminantCount > 0
-      and buf(struct.discriminantOffset * 2, 2):le_uint()
    if discriminant then
+      local data = buf(struct.discriminantOffset * 2, 2)
+      discriminant = data:le_uint()
+
       for _, f in ipairs(struct.fields) do
          if f.discriminantValue == discriminant then
-            return discriminant, f
+            return discriminant, f, tree:add(
+               data, (label or "Union") .. ", tag:",  discriminant, "(", f.name, ")")
          end
       end
    end
@@ -157,14 +161,11 @@ function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
          then break end
          if f.group then
             local group = schema.find(rpc_capnp.nodes, "id", f.group.typeId)
-            local group_discriminantValue, group_discriminantField
-               = dissect.struct_discriminant(b_data, group.struct)
+            local group_discriminantValue, group_discriminantField, group_tree
+               = dissect.struct_discriminant(b_data, group.struct, tree, f.name)
             dissect.struct_fields(
                b_data, b_ptr, ptrs, psize, group_discriminantValue,
-               seg, segs, pkt,
-               tree:add(f.name .. (group_discriminantField and ", union: "
-                                      .. group_discriminantField.name or "")),
-               group.struct.fields)
+               seg, segs, pkt, group_tree, group.struct.fields)
          else
             dissect.data(
                f.slot.type, f.slot.offset, seg, segs, b_data, b_ptr,
@@ -213,24 +214,27 @@ function dissect.list(seg, pos, segs, pkt, tree, node)
       for i = 0, count - 1 do
          dissect.data(
             node, i, seg, segs, nil, data, count,
-            data_pos, pkt, tree, tostring(i)
-         )
+            data_pos, pkt, tree, tostring(i))
       end
    elseif esize == "composite" then
       local data = buf(data_pos, (count + 1) * 8):tvb()
       local words = count
-      count = data(0, 4):le_int() / 4
-      tree:add(data(0, 4), "Count:", count)
-         :add(buf(pos + 4, 4), "Words:", words)
 
-      local item_tree = tree:add(data(8), "Items (", words * 8, "bytes )")
+      count = data(0, 4):le_int() / 4
+      tree:add(buf(pos + 4, 4), "Words:", words)
+         :add(data(0, 4), "Count:", count)
+
       local struct = node.struct and schema.find(rpc_capnp.nodes, "id", node.struct.typeId) or node
-      local size = words / count
-      item_tree:add(data(0, 8), "Tag:", struct.name)
-      for i = 0, count - 1 do
-         dissect.struct(
-            seg, data_pos, segs, pkt,
-            item_tree:add(tostring(i)), struct, i * size)
+      tree:add(data(0, 8), "Tag:", struct.name)
+
+      if count > 0 then
+         local size = words / count
+         local item_tree = tree:add(data(8), "Items (", words * 8, "bytes )")
+         for i = 0, count - 1 do
+            dissect.struct(
+               seg, data_pos, segs, pkt,
+               item_tree:add(tostring(i)), struct, i * size)
+         end
       end
    end
 
@@ -306,11 +310,11 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
       local size = val.struct.preferredListEncoding
       if (offset + 1) * size <= b_data:len() then
          local data = b_data(offset * size, size)
-         local discriminantValue = dissect.struct_discriminant(data, val.struct)
+         local struct_tree = tree:add(data, name .. ":", val.name)
+         local discriminantValue = dissect.struct_discriminant(data, val.struct, struct_tree)
          return dissect.struct_fields(
             data:tvb(), nil, 0, 0, discriminantValue, seg, segs, pkt,
-            tree:add(data, name, val.name),
-            val.struct.fields)
+            struct_tree, val.struct.fields)
       end
    else
       return tree:add(name .. ":", "<field type not dissected>", typ)
