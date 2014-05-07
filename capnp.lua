@@ -141,6 +141,7 @@ function dissect.struct_discriminant(buf, struct)
    end
 end
 
+-- Notice: only default values for bool fields are currently implemented!
 function dissect.struct_fields(b_data, ptrs, psize, discriminant,
                                seg, segs, pkt, tree, fields)
    for _, f in ipairs(fields) do
@@ -170,7 +171,19 @@ function dissect.struct_fields(b_data, ptrs, psize, discriminant,
                tree:add(f.name, "<todo>", typ)
             elseif typ == "void" then
                tree:add(f.name .. ":", "(void)")
-            --elseif typ == "bool" then
+            elseif typ == "bool" then
+               local off, bit = math.modf(f.slot.offset / 8)
+               if off < b_data:len() then
+                  local b = b_data(off, 1)
+                  local v = b:bitfield(7 - (bit * 8), 1)
+                  local value = v == 1
+                  if f.slot.defaultValue.bool then
+                     value = not value
+                  end
+                  tree:add(b, f.name .. ":", tostring(value))
+               else
+                  tree:add(f.name .. ":", "(no data)")
+               end
             elseif string.sub(typ, 1, 3) == "int" then
                local size = tonumber(string.sub(typ, 4)) / 8
                if (f.slot.offset + 1) * size <= b_data:len() then
