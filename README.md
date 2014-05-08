@@ -90,4 +90,18 @@ Cap'n Proto RPC Protocol: release(1) referenceCount=1
 
 ```
 
-The content is not (yet) parsed with a schema, and as such doesn't get dumped to text form.
+### Custom schemas
+
+Simply plugin additional capnp schemas to be used by the dissector by
+compiling them to lua code using the provided `Makefile`:
+
+```
+make schema input=/path/to/my-schema.capnp
+```
+
+This will compile the schema to `plugins/my-schema_capnp.lua` and is
+automatically picked up by the dissector.
+
+*Notice:* The content is not (yet) parsed with a schema, and as such
+doesn't get dumped to text form.
+

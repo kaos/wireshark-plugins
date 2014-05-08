@@ -4,19 +4,22 @@ end
 
 -- fake atoms
 local void = "void"
-local inlineComposite = "inlineComposite"
+local empty = "empty"
+local bit = "bit"
+local byte = 1
+local twoBytes = 2
 local fourBytes = 4
 local eightBytes = 8
+local pointer = "pointer"
+local inlineComposite = "inlineComposite"
 local opaquePointer = "opaquePointer"
 
--- Notice: Lua doesn't support 64 bit values, but they are still
--- comparable to each other, which will be good enough.
-
-capnp_schema["rpc"] = { nodes = {
-    { id = 15376050949367520589,
+capnp_schema["rpc"] =
+{ nodes = {
+    { id = "15376050949367520589",
       displayName = "/usr/local/include/capnp/rpc.capnp:Disembargo.context",
       displayNamePrefixLength = 46,
-      scopeId = 17970548384007534353,
+      scopeId = "17970548384007534353",
       struct = {
         dataWordCount = 1,
         pointerCount = 1,
@@ -61,10 +64,10 @@ capnp_schema["rpc"] = { nodes = {
               defaultValue = {uint32 = 0},
               hadExplicitDefault = false },
             ordinal = {explicit = 4} } } } },
-    { id = 15235686326393111165,
+    { id = "15235686326393111165",
       displayName = "/usr/local/include/capnp/rpc.capnp:ThirdPartyCapDescriptor",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -93,10 +96,10 @@ capnp_schema["rpc"] = { nodes = {
               defaultValue = {uint32 = 0},
               hadExplicitDefault = false },
             ordinal = {explicit = 1} } } } },
-    { id = 9593755465305995440,
+    { id = "9593755465305995440",
       displayName = "/usr/local/include/capnp/rpc.capnp:CapDescriptor",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -149,7 +152,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 15564635848320162976 } },
+                  typeId = "15564635848320162976" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -161,15 +164,15 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 15235686326393111165 } },
+                  typeId = "15235686326393111165" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
             ordinal = {explicit = 5} } } } },
-    { id = 17516350820840804481,
+    { id = "17516350820840804481",
       displayName = "/usr/local/include/capnp/rpc.capnp:PromisedAnswer.Op",
       displayNamePrefixLength = 50,
-      scopeId = 15564635848320162976,
+      scopeId = "15564635848320162976",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -197,10 +200,10 @@ capnp_schema["rpc"] = { nodes = {
               defaultValue = {uint16 = 0},
               hadExplicitDefault = false },
             ordinal = {explicit = 1} } } } },
-    { id = 12473400923157197975,
+    { id = "12473400923157197975",
       displayName = "/usr/local/include/capnp/rpc.capnp:Release",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -228,10 +231,10 @@ capnp_schema["rpc"] = { nodes = {
               defaultValue = {uint32 = 0},
               hadExplicitDefault = false },
             ordinal = {explicit = 1} } } } },
-    { id = 18149955118657700271,
+    { id = "18149955118657700271",
       displayName = "/usr/local/include/capnp/rpc.capnp:Join",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -257,7 +260,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 10789521159760378817 } },
+                  typeId = "10789521159760378817" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -272,10 +275,10 @@ capnp_schema["rpc"] = { nodes = {
                 anyPointer = opaquePointer },
               hadExplicitDefault = false },
             ordinal = {explicit = 2} } } } },
-    { id = 15239388059401719395,
+    { id = "15239388059401719395",
       displayName = "/usr/local/include/capnp/rpc.capnp:Finish",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -303,10 +306,10 @@ capnp_schema["rpc"] = { nodes = {
               defaultValue = {bool = true},
               hadExplicitDefault = true },
             ordinal = {explicit = 1} } } } },
-    { id = 9469473312751832276,
+    { id = "9469473312751832276",
       displayName = "/usr/local/include/capnp/rpc.capnp:Call",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 3,
@@ -332,7 +335,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 10789521159760378817 } },
+                  typeId = "10789521159760378817" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -362,7 +365,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 1,
               type = {
                 struct = {
-                  typeId = 11100916931204903995 } },
+                  typeId = "11100916931204903995" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -371,7 +374,7 @@ capnp_schema["rpc"] = { nodes = {
             codeOrder = 6,
             discriminantValue = 65535,
             group = {
-              typeId = 15774052265921044377 },
+              typeId = "15774052265921044377" },
             ordinal = {implicit = void} },
           { name = "allowThirdPartyTailCall",
             codeOrder = 4,
@@ -382,10 +385,10 @@ capnp_schema["rpc"] = { nodes = {
               defaultValue = {bool = false},
               hadExplicitDefault = true },
             ordinal = {explicit = 8} } } } },
-    { id = 17009130564474155176,
+    { id = "17009130564474155176",
       displayName = "/usr/local/include/capnp/rpc.capnp:Restore",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -414,10 +417,10 @@ capnp_schema["rpc"] = { nodes = {
                 anyPointer = opaquePointer },
               hadExplicitDefault = false },
             ordinal = {explicit = 1} } } } },
-    { id = 11392333052105676602,
+    { id = "11392333052105676602",
       displayName = "/usr/local/include/capnp/rpc.capnp:Return",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 2,
@@ -452,7 +455,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 11100916931204903995 } },
+                  typeId = "11100916931204903995" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -464,7 +467,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 15430940935639230746 } },
+                  typeId = "15430940935639230746" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -506,10 +509,10 @@ capnp_schema["rpc"] = { nodes = {
                 anyPointer = opaquePointer },
               hadExplicitDefault = false },
             ordinal = {explicit = 7} } } } },
-    { id = 13386661402618388268,
+    { id = "13386661402618388268",
       displayName = "/usr/local/include/capnp/c++.capnp:namespace",
       displayNamePrefixLength = 35,
-      scopeId = 13688829037717245569,
+      scopeId = "13688829037717245569",
       nestedNodes = {},
       annotation = {
         type = {text = void},
@@ -525,10 +528,10 @@ capnp_schema["rpc"] = { nodes = {
         targetsMethod = false,
         targetsParam = false,
         targetsAnnotation = false } },
-    { id = 13529541526594062446,
+    { id = "13529541526594062446",
       displayName = "/usr/local/include/capnp/rpc.capnp:Resolve",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -554,7 +557,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 9593755465305995440 } },
+                  typeId = "9593755465305995440" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -566,18 +569,18 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 15430940935639230746 } },
+                  typeId = "15430940935639230746" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
             ordinal = {explicit = 2} } } } },
-    { id = 15430940935639230746,
+    { id = "15430940935639230746",
       displayName = "/usr/local/include/capnp/rpc.capnp:Exception",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {
         { name = "Durability",
-          id = 13523986587913222488 } },
+          id = "13523986587913222488" } },
       struct = {
         dataWordCount = 1,
         pointerCount = 1,
@@ -611,26 +614,26 @@ capnp_schema["rpc"] = { nodes = {
               offset = 1,
               type = {
                 enum = {
-                  typeId = 13523986587913222488 } },
+                  typeId = "13523986587913222488" } },
               defaultValue = {enum = 0},
               hadExplicitDefault = false },
             ordinal = {explicit = 2} } } } },
-    { id = 13688829037717245569,
+    { id = "13688829037717245569",
       displayName = "/usr/local/include/capnp/c++.capnp",
       displayNamePrefixLength = 29,
-      scopeId = 0,
+      scopeId = "0",
       nestedNodes = {
         { name = "namespace",
-          id = 13386661402618388268 } },
+          id = "13386661402618388268" } },
       annotations = {
-        { id = 13386661402618388268,
+        { id = "13386661402618388268",
           value = {
             text = "capnp::annotations" } } },
       file = void },
-    { id = 10500036013887172658,
+    { id = "10500036013887172658",
       displayName = "/usr/local/include/capnp/rpc.capnp:Message",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -647,7 +650,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 10500036013887172658 } },
+                  typeId = "10500036013887172658" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -659,7 +662,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 15430940935639230746 } },
+                  typeId = "15430940935639230746" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -671,7 +674,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 9469473312751832276 } },
+                  typeId = "9469473312751832276" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -683,7 +686,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 11392333052105676602 } },
+                  typeId = "11392333052105676602" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -695,7 +698,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 15239388059401719395 } },
+                  typeId = "15239388059401719395" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -707,7 +710,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 13529541526594062446 } },
+                  typeId = "13529541526594062446" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -719,7 +722,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 12473400923157197975 } },
+                  typeId = "12473400923157197975" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -731,7 +734,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 16433336749162137644 } },
+                  typeId = "16433336749162137644" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -743,7 +746,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 17009130564474155176 } },
+                  typeId = "17009130564474155176" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -755,7 +758,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 9666541409743531671 } },
+                  typeId = "9666541409743531671" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -767,7 +770,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 11270825879279873114 } },
+                  typeId = "11270825879279873114" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -779,7 +782,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 15332985841292492822 } },
+                  typeId = "15332985841292492822" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -791,7 +794,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 18149955118657700271 } },
+                  typeId = "18149955118657700271" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -803,15 +806,15 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 17970548384007534353 } },
+                  typeId = "17970548384007534353" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
             ordinal = {explicit = 13} } } } },
-    { id = 16433336749162137644,
+    { id = "16433336749162137644",
       displayName = "/usr/local/include/capnp/rpc.capnp:Save",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -837,25 +840,25 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 10789521159760378817 } },
+                  typeId = "10789521159760378817" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
             ordinal = {explicit = 1} } } } },
-    { id = 13523986587913222488,
+    { id = "13523986587913222488",
       displayName = "/usr/local/include/capnp/rpc.capnp:Exception.Durability",
       displayNamePrefixLength = 45,
-      scopeId = 15430940935639230746,
+      scopeId = "15430940935639230746",
       nestedNodes = {},
       enum = {
         enumerants = {
           {name = "permanent", codeOrder = 0},
           {name = "temporary", codeOrder = 1},
           {name = "overloaded", codeOrder = 2} } } },
-    { id = 9666541409743531671,
+    { id = "9666541409743531671",
       displayName = "/usr/local/include/capnp/rpc.capnp:Delete",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -884,10 +887,10 @@ capnp_schema["rpc"] = { nodes = {
                 anyPointer = opaquePointer },
               hadExplicitDefault = false },
             ordinal = {explicit = 1} } } } },
-    { id = 11100916931204903995,
+    { id = "11100916931204903995",
       displayName = "/usr/local/include/capnp/rpc.capnp:Payload",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 0,
@@ -916,14 +919,14 @@ capnp_schema["rpc"] = { nodes = {
                 list = {
                   elementType = {
                     struct = {
-                      typeId = 9593755465305995440 } } } },
+                      typeId = "9593755465305995440" } } } },
               defaultValue = {list = opaquePointer},
               hadExplicitDefault = false },
             ordinal = {explicit = 1} } } } },
-    { id = 11270825879279873114,
+    { id = "11270825879279873114",
       displayName = "/usr/local/include/capnp/rpc.capnp:Provide",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -949,7 +952,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 10789521159760378817 } },
+                  typeId = "10789521159760378817" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -964,56 +967,56 @@ capnp_schema["rpc"] = { nodes = {
                 anyPointer = opaquePointer },
               hadExplicitDefault = false },
             ordinal = {explicit = 2} } } } },
-    { id = 12903543124727603792,
+    { id = "12903543124727603792",
       displayName = "/usr/local/include/capnp/rpc.capnp",
       displayNamePrefixLength = 29,
-      scopeId = 0,
+      scopeId = "0",
       nestedNodes = {
         { name = "Message",
-          id = 10500036013887172658 },
-        {name = "Call", id = 9469473312751832276},
+          id = "10500036013887172658" },
+        {name = "Call", id = "9469473312751832276"},
         { name = "Return",
-          id = 11392333052105676602 },
+          id = "11392333052105676602" },
         { name = "Finish",
-          id = 15239388059401719395 },
+          id = "15239388059401719395" },
         { name = "Resolve",
-          id = 13529541526594062446 },
+          id = "13529541526594062446" },
         { name = "Release",
-          id = 12473400923157197975 },
+          id = "12473400923157197975" },
         { name = "Disembargo",
-          id = 17970548384007534353 },
+          id = "17970548384007534353" },
         { name = "Save",
-          id = 16433336749162137644 },
+          id = "16433336749162137644" },
         { name = "Restore",
-          id = 17009130564474155176 },
-        {name = "Delete", id = 9666541409743531671},
+          id = "17009130564474155176" },
+        {name = "Delete", id = "9666541409743531671"},
         { name = "Provide",
-          id = 11270825879279873114 },
+          id = "11270825879279873114" },
         { name = "Accept",
-          id = 15332985841292492822 },
+          id = "15332985841292492822" },
         { name = "Join",
-          id = 18149955118657700271 },
+          id = "18149955118657700271" },
         { name = "MessageTarget",
-          id = 10789521159760378817 },
+          id = "10789521159760378817" },
         { name = "Payload",
-          id = 11100916931204903995 },
-        {name = "CapDescriptor", id = 9593755465305995440},
+          id = "11100916931204903995" },
+        {name = "CapDescriptor", id = "9593755465305995440"},
         { name = "PromisedAnswer",
-          id = 15564635848320162976 },
+          id = "15564635848320162976" },
         { name = "SturdyRef",
-          id = 14883405629196290303 },
+          id = "14883405629196290303" },
         { name = "ThirdPartyCapDescriptor",
-          id = 15235686326393111165 },
+          id = "15235686326393111165" },
         { name = "Exception",
-          id = 15430940935639230746 } },
+          id = "15430940935639230746" } },
       annotations = {
-        { id = 13386661402618388268,
+        { id = "13386661402618388268",
           value = {text = "capnp::rpc"} } },
       file = void },
-    { id = 17970548384007534353,
+    { id = "17970548384007534353",
       displayName = "/usr/local/include/capnp/rpc.capnp:Disembargo",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -1030,7 +1033,7 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 10789521159760378817 } },
+                  typeId = "10789521159760378817" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
@@ -1039,12 +1042,12 @@ capnp_schema["rpc"] = { nodes = {
             codeOrder = 1,
             discriminantValue = 65535,
             group = {
-              typeId = 15376050949367520589 },
+              typeId = "15376050949367520589" },
             ordinal = {implicit = void} } } } },
-    { id = 14883405629196290303,
+    { id = "14883405629196290303",
       displayName = "/usr/local/include/capnp/rpc.capnp:SturdyRef",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 0,
@@ -1074,10 +1077,10 @@ capnp_schema["rpc"] = { nodes = {
                 anyPointer = opaquePointer },
               hadExplicitDefault = false },
             ordinal = {explicit = 1} } } } },
-    { id = 15332985841292492822,
+    { id = "15332985841292492822",
       displayName = "/usr/local/include/capnp/rpc.capnp:Accept",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -1115,10 +1118,10 @@ capnp_schema["rpc"] = { nodes = {
               defaultValue = {bool = false},
               hadExplicitDefault = false },
             ordinal = {explicit = 2} } } } },
-    { id = 10789521159760378817,
+    { id = "10789521159760378817",
       displayName = "/usr/local/include/capnp/rpc.capnp:MessageTarget",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {},
       struct = {
         dataWordCount = 1,
@@ -1144,15 +1147,15 @@ capnp_schema["rpc"] = { nodes = {
               offset = 0,
               type = {
                 struct = {
-                  typeId = 15564635848320162976 } },
+                  typeId = "15564635848320162976" } },
               defaultValue = {
                 struct = opaquePointer },
               hadExplicitDefault = false },
             ordinal = {explicit = 1} } } } },
-    { id = 15774052265921044377,
+    { id = "15774052265921044377",
       displayName = "/usr/local/include/capnp/rpc.capnp:Call.sendResultsTo",
       displayNamePrefixLength = 40,
-      scopeId = 9469473312751832276,
+      scopeId = "9469473312751832276",
       struct = {
         dataWordCount = 3,
         pointerCount = 3,
@@ -1189,13 +1192,13 @@ capnp_schema["rpc"] = { nodes = {
                 anyPointer = opaquePointer },
               hadExplicitDefault = false },
             ordinal = {explicit = 7} } } } },
-    { id = 15564635848320162976,
+    { id = "15564635848320162976",
       displayName = "/usr/local/include/capnp/rpc.capnp:PromisedAnswer",
       displayNamePrefixLength = 35,
-      scopeId = 12903543124727603792,
+      scopeId = "12903543124727603792",
       nestedNodes = {
         { name = "Op",
-          id = 17516350820840804481 } },
+          id = "17516350820840804481" } },
       struct = {
         dataWordCount = 1,
         pointerCount = 1,
@@ -1222,13 +1225,13 @@ capnp_schema["rpc"] = { nodes = {
                 list = {
                   elementType = {
                     struct = {
-                      typeId = 17516350820840804481 } } } },
+                      typeId = "17516350820840804481" } } } },
               defaultValue = {list = opaquePointer},
               hadExplicitDefault = false },
             ordinal = {explicit = 1} } } } } },
   requestedFiles = {
-    { id = 12903543124727603792,
+    { id = "12903543124727603792",
       filename = "/usr/local/include/capnp/rpc.capnp",
       imports = {
-        { id = 13688829037717245569,
+        { id = "13688829037717245569",
           name = "c++.capnp" } } } } }
