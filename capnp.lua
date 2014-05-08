@@ -26,9 +26,9 @@ function proto.dissector(buf, pkt, root)
    if buf(0,1):bitfield(6, 2) == 0 then
       pkt.cols.protocol:set("CAPNP")
       local tree = root:add(proto, buf(0))
-      local root, extra = dissect.message(buf, pkt, tree)
-      if root then
-         tree:append_text(": " .. root .. tostring(extra))
+      local desc = dissect.message(buf, pkt, tree)
+      if desc then
+         tree:append_text(": " .. desc)
       end
    end
 end
@@ -58,7 +58,8 @@ function dissect.message(buf, pkt, tree)
       messageNode = schema.find(rpc_capnp.nodes, "id", messageId)
    end
 
-   return dissect.ptr(0, 0, segs, pkt, tree:add(segs[0](0,8), "Root"), messageNode)
+   msg = dissect.ptr(0, 0, segs, pkt, tree:add(segs[0](0,8), "Root"), messageNode)
+   return dissect.describe_message(msg)
 end
 
 function dissect.ptr(seg, pos, segs, pkt, tree, node)
@@ -116,12 +117,12 @@ function dissect.struct(seg, pos, segs, pkt, tree, node, override_offset)
 
 
    tree:append_text(": " .. node.name .. (discriminantField and ", union: " .. discriminantField.name or ""))
-
+   local fields = {}
    if node.struct then
       local fields_tree = tree:add(
          buf(pos + (offset + 1) * 8, (dsize + psize) * 8),
          "Fields")
-      dissect.struct_fields(
+      fields = dissect.struct_fields(
          b_data, b_ptr, ptr_offset, psize, discriminantValue,
          seg, segs, pkt, fields_tree, node.struct.fields)
    else
@@ -133,7 +134,11 @@ function dissect.struct(seg, pos, segs, pkt, tree, node, override_offset)
       end
    end
 
-   return node.name, discriminantField and ", " .. discriminantField.name
+   return { struct = {
+               schema = node,
+               discriminant = discriminantField,
+               fields = fields
+   }}
 end
 
 function dissect.struct_discriminant(buf, struct, tree, label)
@@ -154,6 +159,7 @@ end
 -- Notice: only default values for bool fields are currently implemented!
 function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
                                seg, segs, pkt, tree, fields)
+   local res = {}
    for _, f in ipairs(fields) do
       repeat
          if f.discriminantValue < 0xffff and
@@ -163,16 +169,17 @@ function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
             local group = schema.find(rpc_capnp.nodes, "id", f.group.typeId)
             local group_discriminantValue, group_discriminantField, group_tree
                = dissect.struct_discriminant(b_data, group.struct, tree, f.name)
-            dissect.struct_fields(
+            res[f.name] = dissect.struct_fields(
                b_data, b_ptr, ptrs, psize, group_discriminantValue,
                seg, segs, pkt, group_tree, group.struct.fields)
          else
-            dissect.data(
+            res[f.name] = dissect.data(
                f.slot.type, f.slot.offset, seg, segs, b_data, b_ptr,
                psize, ptrs, pkt, tree, f.name, f.slot.defaultValue)
          end
       until true
    end
+   return res
 end
 
 local list_element_size = {0, 1, 8, 16, 32, 64, "ptr", "composite"}
@@ -184,6 +191,7 @@ function dissect.list(seg, pos, segs, pkt, tree, node)
    local count = math.floor(buf(pos + 4, 4):le_uint() / 8)
    local esize = list_element_size[buf(pos + 4, 1):bitfield(5, 3) + 1]
    local node_text
+   local res = {}
 
    tree:add(buf(pos, 4), "Offset:", offset)
    tree:add(buf(pos + 4, 1), "Element size:", esize)
@@ -192,9 +200,9 @@ function dissect.list(seg, pos, segs, pkt, tree, node)
       tree:add(buf(pos + 4, 4), "Count:", count)
       local data = buf(data_pos, (count * esize) / 8)
       if esize == 8 and not node.struct then
-         local text = string.format("%q", data:string())
-         tree:add(proto.fields.text, data, text)
-         node_text = ": " .. node.name .. " = " .. text
+         res = string.format("%q", data:string())
+         tree:add(proto.fields.text, data, res)
+         node_text = ": " .. node.name .. " = " .. res
       elseif count > 0 and esize > 0 then
          local item_tree = tree:add(data, "Data (", data:len(), "bytes )")
          if node.struct then
@@ -202,7 +210,7 @@ function dissect.list(seg, pos, segs, pkt, tree, node)
             node = { ["headless-struct"] = struct }
          end
          for i = 0, count - 1 do
-            dissect.data(
+            res[i + 1] = dissect.data(
                node, i, seg, segs, data, nil, 0, 0,
                pkt, item_tree, tostring(i))
          end
@@ -212,7 +220,7 @@ function dissect.list(seg, pos, segs, pkt, tree, node)
       local data = buf(data_pos, count * 8)
       local item_tree = tree:add(data, "Items (", data:len(), "bytes )")
       for i = 0, count - 1 do
-         dissect.data(
+         res[i + 1] = dissect.data(
             node, i, seg, segs, nil, data, count,
             data_pos, pkt, tree, tostring(i))
       end
@@ -231,7 +239,7 @@ function dissect.list(seg, pos, segs, pkt, tree, node)
          local size = words / count
          local item_tree = tree:add(data(8), "Items (", words * 8, "bytes )")
          for i = 0, count - 1 do
-            dissect.struct(
+            res[i + 1] = dissect.struct(
                seg, data_pos, segs, pkt,
                item_tree:add(tostring(i)), struct, i * size)
          end
@@ -242,7 +250,7 @@ function dissect.list(seg, pos, segs, pkt, tree, node)
       node_text = ": " .. tostring(count) .. " item" .. (count == 1 and "" or "s")
    end
 
-   tree:append_text(node_text)
+   return res, tree:append_text(node_text)
 end
 
 function dissect.cap(seg, pos, segs, pkt, tree, node)
@@ -250,6 +258,7 @@ function dissect.cap(seg, pos, segs, pkt, tree, node)
    local idx = buf(pos + 4, 4):le_uint()
    tree:append_text(": " .. node.name .. " = cap " .. tostring(idx))
    tree:add(buf(pos + 4, 4), "Capability:", idx)
+   return { cap = idx }
 end
 
 function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
@@ -278,9 +287,9 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
             { name = "AnyPointer" })
       end
    elseif typ == "interface" then
-      return tree:add(name, "<todo>", typ)
+      return data_type, tree:add(name, "<todo>", typ)
    elseif typ == "void" then
-      return tree:add(name .. ":", "(void)")
+      return typ, tree:add(name .. ":", "(void)")
    elseif typ == "bool" then
       local off, bit = math.modf(offset / 8)
       if off < b_data:len() then
@@ -290,21 +299,21 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
          if default_value and default_value.bool then
             value = not value
          end
-         return tree:add(b, name .. ":", tostring(value))
+         return value, tree:add(b, name .. ":", tostring(value))
       end
    elseif string.sub(typ, 1, 3) == "int" then
       local size = tonumber(string.sub(typ, 4)) / 8
       if (offset + 1) * size <= b_data:len() then
          local b = b_data(offset * size, size)
          local v = size < 8 and b:le_int() or tostring(b:le_int64())
-         return tree:add(b, name .. ":", v)
+         return v, tree:add(b, name .. ":", v)
       end
    elseif string.sub(typ, 1, 4) == "uint" then
       local size = tonumber(string.sub(typ, 5)) / 8
       if (offset + 1) * size <= b_data:len() then
          local b = b_data(offset * size, size)
          local v = size < 8 and b:le_uint() or tostring(b:le_uint64())
-         return tree:add(b, name .. ":", v)
+         return v, tree:add(b, name .. ":", v)
       end
    elseif typ == "headless-struct" then
       local size = val.struct.preferredListEncoding
@@ -317,8 +326,63 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
             struct_tree, val.struct.fields)
       end
    else
-      return tree:add(name .. ":", "<field type not dissected>", typ)
+      return "<not dissected>", tree:add(name .. ":", "<field type not dissected>", typ)
    end
 
-   tree:add(name .. ":", "(no data)", typ)
+   return "(no data)", tree:add(name .. ":", "(no data)", typ)
+end
+
+local describe = {}
+
+function dissect.describe_message(typ, val)
+   if val == nil and type(typ) == "table" then
+      return dissect.describe_message(next(typ))
+   end
+
+   if typ ~= "struct" or val.schema.name ~= "Message" then
+      return "<invalid rpc message>"
+   end
+
+   return describe.discriminant(val)
+end
+
+function describe.discriminant(val)
+   if not val then return "nil?!" end
+   local tag = val.discriminant.name
+   local fun = describe[tag]
+   local val = val.fields[tag]
+   return tag .. (fun and fun(val) or "")
+end
+
+function describe.call(call)
+   local f = call.struct.fields
+   local target = describe.discriminant(f.target.struct) or "?"
+   return "(" .. tostring(f.questionId) .. ") " .. target
+      .. "::" .. f.interfaceId .. "->method(" .. f.methodId .. ") "
+end
+
+function describe.promisedAnswer(promise)
+   local f = promise.struct.fields
+   local transform = {}
+   for k, v in ipairs(f.transform) do
+      transform[k] = describe.lua_value(v)
+   end
+   return "(" .. tostring(f.questionId) .. ", ["
+      .. describe.lua_value(transform) .. "])"
+end
+
+function describe.lua_value(o)
+   if type(o) == 'table' then
+      local s
+      for k,v in pairs(o) do
+         s = s and s .. ', ' or ''
+         if type(k) ~= 'number' then
+            s = s .. k .. '='
+         end
+         s = s .. describe.lua_value(v)
+      end
+      return s or ''
+   else
+      return tostring(o)
+   end
 end
