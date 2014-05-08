@@ -15,9 +15,12 @@
 --
 
 local proto = Proto("capnp", "Cap'n Proto RPC Protocol")
+local tcp_port
 
-proto.fields.data = ProtoField.bytes("capnp.data", "Data")
 proto.fields.text = ProtoField.string("capnp.text", "Text")
+proto.prefs.tcp_port = Pref.uint(
+   "TCP Port", 9090,
+   "Set the port for Cap'n Proto RPC messages.")
 
 local dissect = {}
 local fileNode, messageNode
@@ -28,12 +31,36 @@ function proto.dissector(buf, pkt, root)
       local tree = root:add(proto, buf(0))
       local desc = dissect.message(buf, pkt, tree)
       if desc then
+         pkt.cols.info:set(desc)
          tree:append_text(": " .. desc)
       end
    end
 end
 
-DissectorTable.get("tcp.port"):add(55000, proto)
+local function unregister()
+   if tcp_port then
+      DissectorTable.get("tcp.port"):remove(tcp_port, proto)
+      tcp_port = nil
+   end
+end
+
+local function register()
+   if tcp_port then
+      DissectorTable.get("tcp.port"):add(tcp_port, proto)
+   end
+end
+
+function proto.init()
+   if proto.prefs.tcp_port == tcp_port then return end
+   unregister()
+   tcp_port = proto.prefs.tcp_port
+   register()
+end
+
+
+--------------------------------------------------------------------------------
+-- Dissect routines
+--------------------------------------------------------------------------------
 
 function dissect.message(buf, pkt, tree)
    local count = buf(0,4):le_uint() + 1
