@@ -16,11 +16,14 @@
 
 local proto = Proto("capnp", "Cap'n Proto RPC Protocol")
 local tcp_port
+local dir_marker = {}
 
 proto.fields.text = ProtoField.string("capnp.text", "Text")
 proto.prefs.tcp_port = Pref.uint(
    "TCP Port", 9090,
    "Set the port for Cap'n Proto RPC messages.")
+proto.prefs.to_port = Pref.string("Direction marker, to port", "->", "")
+proto.prefs.from_port = Pref.string("Direction marker, from port", "<-", "")
 
 local dissect = {}
 local fileNode, messageNode
@@ -31,8 +34,8 @@ function proto.dissector(buf, pkt, root)
       local tree = root:add(proto, buf(0))
       local desc = dissect.message(buf, pkt, tree)
       if desc then
-         local dir = pkt.dst_port == tcp_port and "> " or "< "
-         pkt.cols.info:set(dir .. desc)
+         local marker = dir_marker[pkt.dst_port == tcp_port] or ""
+         pkt.cols.info:set(marker .. desc)
          tree:append_text(": " .. desc)
       end
    end
@@ -52,6 +55,9 @@ local function register()
 end
 
 function proto.init()
+   dir_marker[true] = proto.prefs.to_port .. " "
+   dir_marker[false] = proto.prefs.from_port .. " "
+
    if proto.prefs.tcp_port == tcp_port then return end
    unregister()
    tcp_port = proto.prefs.tcp_port
