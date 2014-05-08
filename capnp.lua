@@ -405,31 +405,45 @@ end
 -- rpc types, roughly in the same order
 -- as defined in rpc.capnp
 
-function describe.struct.Message(msg)
-   return describe.discriminant(msg)
+function describe.struct.Message(obj)
+   return describe.discriminant(obj)
 end
 
-function describe.struct.Call(call)
-   local f = call.fields
-   local target = describe.value(f.target) or "target?"
-   return "(" .. tostring(f.questionId) .. ") " .. target
+function describe.struct.Call(obj)
+   local f = obj.fields
+   local t = {}
+   for _, k in ipairs({ "target", "params" }) do
+      t[k] = describe.value(f[k])
+   end
+   return "(" .. tostring(f.questionId) .. ") " .. t.target
       .. "::" .. f.interfaceId .. "->method(" .. f.methodId .. ") "
+      .. t.params .. " return to: " .. next(f.sendResultsTo)
+      .. ", tail call: " .. tostring(f.allowThirdPartyTailCall)
 end
 
-function describe.struct.Return(ret)
-   local f = ret.fields
-   local result = describe.discriminant(ret) or "result?"
-   return "(" .. tostring(f.answerId) .. ") " .. result
+function describe.struct.Return(obj)
+   local f = obj.fields
+   local result = describe.discriminant(obj)
+   return "(" .. tostring(f.answerId) .. ") releaseParamCaps="
+      .. tostring(f.releaseParamCaps) .. " " .. result
 end
 
--- function describe.struct.Finish()
--- end
+function describe.struct.Finish(obj)
+   local f = obj.fields
+   return "(" .. tostring(f.questionId) .. ") releaseResultCaps="
+      .. tostring(f.releaseResultCaps)
+end
 
--- function describe.struct.Resolve()
--- end
+function describe.struct.Resolve(obj)
+   local f = obj.fields
+   local promise = describe.discriminant(obj)
+   return "(" .. tostring(f.promiseId) .. ") " .. promise
+end
 
--- function describe.struct.Release()
--- end
+function describe.struct.Release(obj)
+   local f = obj.fields
+   return "(" .. tostring(f.id) .. ") referenceCount=" .. tostring(f.referenceCount)
+end
 
 -- function describe.struct.Disembargo()
 -- end
@@ -437,10 +451,10 @@ end
 -- function describe.struct.Save()
 -- end
 
-function describe.struct.Restore(restore)
-   local f = restore.fields
+function describe.struct.Restore(obj)
+   local f = obj.fields
    local object = describe.value(f.objectId)
-   return "(" .. tostring(f.questionId) .. ") objectId = " .. object
+   return "(" .. tostring(f.questionId) .. ") objectId=" .. object
 end
 
 -- function describe.struct.Delete()
@@ -458,19 +472,18 @@ end
 ----------------------------------------
 -- Common structures used in messages
 
-function describe.struct.MessageTarget(target)
-   return describe.discriminant(target)
-end
+-- function describe.struct.MessageTarget(obj)
+-- end
 
--- function describe.struct.Payload(payload)
+-- function describe.struct.Payload(obj)
 --    return "(...)"
 -- end
 
 -- function describe.struct.CapDescriptor()
 -- end
 
-function describe.struct.PromisedAnswer(promise)
-   local f = promise.fields
+function describe.struct.PromisedAnswer(obj)
+   local f = obj.fields
    return "(" .. tostring(f.questionId) .. ", " .. describe.value(f.transform) .. ")"
 end
 
