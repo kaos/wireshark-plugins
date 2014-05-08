@@ -87,9 +87,9 @@ function dissect.message(buf, pkt, tree)
    end
 
    if not fileNode then
-      fileNode = schema.find(rpc_capnp.nodes, "id", rpc_capnp.requestedFiles[1].id)
-      local messageId = schema.find(fileNode.nestedNodes, "name", "Message").id
-      messageNode = schema.find(rpc_capnp.nodes, "id", messageId)
+      fileNode = capnp_schema("id", capnp_schema.rpc.requestedFiles[1].id)
+      local messageId = capnp_schema("name", "Message", fileNode.nestedNodes).id
+      messageNode = capnp_schema("id", messageId)
    end
 
    msg = dissect.ptr(0, 0, segs, pkt, tree:add(segs[0](0,8), "Root"), messageNode)
@@ -200,7 +200,7 @@ function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
             f.discriminantValue ~= discriminant
          then break end
          if f.group then
-            local group = schema.find(rpc_capnp.nodes, "id", f.group.typeId)
+            local group = capnp_schema("id", f.group.typeId)
             local group_discriminantValue, group_discriminantField, group_tree
                = dissect.struct_discriminant(b_data, group.struct, tree, f.name)
             res[f.name] = dissect.struct_fields(
@@ -240,7 +240,7 @@ function dissect.list(seg, pos, segs, pkt, tree, node)
       elseif count > 0 and esize > 0 then
          local item_tree = tree:add(data, "Data (", data:len(), "bytes )")
          if node.struct then
-            local struct = schema.find(rpc_capnp.nodes, "id", node.struct.typeId)
+            local struct = capnp_schema("id", node.struct.typeId)
             node = { ["headless-struct"] = struct }
          end
          for i = 0, count - 1 do
@@ -266,7 +266,7 @@ function dissect.list(seg, pos, segs, pkt, tree, node)
       tree:add(buf(pos + 4, 4), "Words:", words)
          :add(data(0, 4), "Count:", count)
 
-      local struct = node.struct and schema.find(rpc_capnp.nodes, "id", node.struct.typeId) or node
+      local struct = node.struct and capnp_schema("id", node.struct.typeId) or node
       tree:add(data(0, 8), "Tag:", struct.name)
 
       if count > 0 then
@@ -304,7 +304,7 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
          return dissect.ptr(
             seg, ptrs + (offset * 8), segs, pkt,
             tree:add(b_ptr(offset * 8, 8), name),
-            schema.find(rpc_capnp.nodes, "id", val.typeId))
+            capnp_schema("id", val.typeId))
       end
    elseif typ == "list" then
       if offset < psize then

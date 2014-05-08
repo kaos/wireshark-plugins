@@ -1,3 +1,7 @@
+if not capnp_schema then
+   capnp_schema = {}
+end
+
 -- fake atoms
 local void = "void"
 local inlineComposite = "inlineComposite"
@@ -8,7 +12,7 @@ local opaquePointer = "opaquePointer"
 -- Notice: Lua doesn't support 64 bit values, but they are still
 -- comparable to each other, which will be good enough.
 
-rpc_capnp = { nodes = {
+capnp_schema["rpc"] = { nodes = {
     { id = 15376050949367520589,
       displayName = "/usr/local/include/capnp/rpc.capnp:Disembargo.context",
       displayNamePrefixLength = 46,
