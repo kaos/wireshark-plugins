@@ -250,7 +250,7 @@ function dissect.list(seg, pos, segs, pkt, tree, node)
       node_text = ": " .. tostring(count) .. " item" .. (count == 1 and "" or "s")
    end
 
-   return res, tree:append_text(node_text)
+   return { list=res }, tree:append_text(node_text)
 end
 
 function dissect.cap(seg, pos, segs, pkt, tree, node)
@@ -258,7 +258,7 @@ function dissect.cap(seg, pos, segs, pkt, tree, node)
    local idx = buf(pos + 4, 4):le_uint()
    tree:append_text(": " .. node.name .. " = cap " .. tostring(idx))
    tree:add(buf(pos + 4, 4), "Capability:", idx)
-   return { cap = idx }
+   return { cap=idx }
 end
 
 function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
@@ -351,18 +351,38 @@ function describe.value(obj)
 
    local typ, val = next(obj)
    if typ == "struct" then
-      local fun = describe.struct[val.schema.name]
-      return fun and fun(val) or " <no description for: " .. val.schema.name .. ">"
+      local fun = describe.struct[val.schema.name] or describe.any_struct
+      return fun and fun(val) or ""
+   elseif typ == "list" then
+      if type(val) == "table" then
+         return "[" .. describe.list(val) .. "]"
+      else
+         return tostring(val)
+      end
+   elseif typ == "cap" then
+      return "cap(" .. tostring(val) .. ")"
    end
 
-   return "<describe.value does not handle: '" .. typ .. "' yet..>"
+   return typ .. "=" .. describe.value(val)
+end
+
+function describe.list(t)
+   local res = {}
+   for k, v in pairs(t) do
+      res[k] = describe.value(v)
+   end
+   return describe.lua_value(res)
 end
 
 function describe.discriminant(obj)
-   if not obj then return "nil?!" end
+   if not obj.discriminant then return "" end
    local tag = obj.discriminant.name
    local val = obj.fields[tag]
    return tag .. describe.value(val)
+end
+
+function describe.any_struct(obj)
+   return "(" .. describe.list(obj.fields) .. ")"
 end
 
 function describe.lua_value(o)
@@ -402,20 +422,20 @@ function describe.struct.Return(ret)
    return "(" .. tostring(f.answerId) .. ") " .. result
 end
 
-function describe.struct.Finish()
-end
+-- function describe.struct.Finish()
+-- end
 
-function describe.struct.Resolve()
-end
+-- function describe.struct.Resolve()
+-- end
 
-function describe.struct.Release()
-end
+-- function describe.struct.Release()
+-- end
 
-function describe.struct.Disembargo()
-end
+-- function describe.struct.Disembargo()
+-- end
 
-function describe.struct.Save()
-end
+-- function describe.struct.Save()
+-- end
 
 function describe.struct.Restore(restore)
    local f = restore.fields
@@ -423,17 +443,17 @@ function describe.struct.Restore(restore)
    return "(" .. tostring(f.questionId) .. ") objectId = " .. object
 end
 
-function describe.struct.Delete()
-end
+-- function describe.struct.Delete()
+-- end
 
-function describe.struct.Provide()
-end
+-- function describe.struct.Provide()
+-- end
 
-function describe.struct.Accept()
-end
+-- function describe.struct.Accept()
+-- end
 
-function describe.struct.Join()
-end
+-- function describe.struct.Join()
+-- end
 
 ----------------------------------------
 -- Common structures used in messages
@@ -442,28 +462,23 @@ function describe.struct.MessageTarget(target)
    return describe.discriminant(target)
 end
 
-function describe.struct.Payload(payload)
-   return "(...)"
-end
+-- function describe.struct.Payload(payload)
+--    return "(...)"
+-- end
 
-function describe.struct.CapDescriptor()
-end
+-- function describe.struct.CapDescriptor()
+-- end
 
 function describe.struct.PromisedAnswer(promise)
    local f = promise.fields
-   local transform = {}
-   for k, v in ipairs(f.transform) do
-      transform[k] = describe.lua_value(v)
-   end
-   return "(" .. tostring(f.questionId) .. ", ["
-      .. describe.lua_value(transform) .. "])"
+   return "(" .. tostring(f.questionId) .. ", " .. describe.value(f.transform) .. ")"
 end
 
-function describe.struct.SturdyRef()
-end
+-- function describe.struct.SturdyRef()
+-- end
 
-function describe.struct.ThirdPartyCapDescriptor()
-end
+-- function describe.struct.ThirdPartyCapDescriptor()
+-- end
 
-function describe.struct.Exception()
-end
+-- function describe.struct.Exception()
+-- end
