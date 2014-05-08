@@ -332,43 +332,37 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
    return "(no data)", tree:add(name .. ":", "(no data)", typ)
 end
 
-local describe = {}
+--------------------------------------------------------------------------------
+-- functions for describing a dissected message
+--------------------------------------------------------------------------------
 
-function dissect.describe_message(typ, val)
-   if val == nil and type(typ) == "table" then
-      return dissect.describe_message(next(typ))
-   end
+local describe = { struct = {} }
 
-   if typ ~= "struct" or val.schema.name ~= "Message" then
-      return "<invalid rpc message>"
-   end
-
-   return describe.discriminant(val)
+function dissect.describe_message(msg)
+   return describe.value(msg)
 end
 
-function describe.discriminant(val)
-   if not val then return "nil?!" end
-   local tag = val.discriminant.name
-   local fun = describe[tag]
-   local val = val.fields[tag]
-   return tag .. (fun and fun(val) or "")
-end
+-- utility functions
 
-function describe.call(call)
-   local f = call.struct.fields
-   local target = describe.discriminant(f.target.struct) or "?"
-   return "(" .. tostring(f.questionId) .. ") " .. target
-      .. "::" .. f.interfaceId .. "->method(" .. f.methodId .. ") "
-end
-
-function describe.promisedAnswer(promise)
-   local f = promise.struct.fields
-   local transform = {}
-   for k, v in ipairs(f.transform) do
-      transform[k] = describe.lua_value(v)
+function describe.value(obj)
+   if type(obj) ~= "table" then
+      return tostring(obj)
    end
-   return "(" .. tostring(f.questionId) .. ", ["
-      .. describe.lua_value(transform) .. "])"
+
+   local typ, val = next(obj)
+   if typ == "struct" then
+      local fun = describe.struct[val.schema.name]
+      return fun and fun(val) or " <no description for: " .. val.schema.name .. ">"
+   end
+
+   return "<describe.value does not handle: '" .. typ .. "' yet..>"
+end
+
+function describe.discriminant(obj)
+   if not obj then return "nil?!" end
+   local tag = obj.discriminant.name
+   local val = obj.fields[tag]
+   return tag .. describe.value(val)
 end
 
 function describe.lua_value(o)
@@ -385,4 +379,91 @@ function describe.lua_value(o)
    else
       return tostring(o)
    end
+end
+
+----------------------------------------
+-- rpc types, roughly in the same order
+-- as defined in rpc.capnp
+
+function describe.struct.Message(msg)
+   return describe.discriminant(msg)
+end
+
+function describe.struct.Call(call)
+   local f = call.fields
+   local target = describe.value(f.target) or "target?"
+   return "(" .. tostring(f.questionId) .. ") " .. target
+      .. "::" .. f.interfaceId .. "->method(" .. f.methodId .. ") "
+end
+
+function describe.struct.Return(ret)
+   local f = ret.fields
+   local result = describe.discriminant(ret) or "result?"
+   return "(" .. tostring(f.answerId) .. ") " .. result
+end
+
+function describe.struct.Finish()
+end
+
+function describe.struct.Resolve()
+end
+
+function describe.struct.Release()
+end
+
+function describe.struct.Disembargo()
+end
+
+function describe.struct.Save()
+end
+
+function describe.struct.Restore(restore)
+   local f = restore.fields
+   local object = describe.value(f.objectId)
+   return "(" .. tostring(f.questionId) .. ") objectId = " .. object
+end
+
+function describe.struct.Delete()
+end
+
+function describe.struct.Provide()
+end
+
+function describe.struct.Accept()
+end
+
+function describe.struct.Join()
+end
+
+----------------------------------------
+-- Common structures used in messages
+
+function describe.struct.MessageTarget(target)
+   return describe.discriminant(target)
+end
+
+function describe.struct.Payload(payload)
+   return "(...)"
+end
+
+function describe.struct.CapDescriptor()
+end
+
+function describe.struct.PromisedAnswer(promise)
+   local f = promise.fields
+   local transform = {}
+   for k, v in ipairs(f.transform) do
+      transform[k] = describe.lua_value(v)
+   end
+   return "(" .. tostring(f.questionId) .. ", ["
+      .. describe.lua_value(transform) .. "])"
+end
+
+function describe.struct.SturdyRef()
+end
+
+function describe.struct.ThirdPartyCapDescriptor()
+end
+
+function describe.struct.Exception()
 end
