@@ -31,7 +31,8 @@ function proto.dissector(buf, pkt, root)
       local tree = root:add(proto, buf(0))
       local desc = dissect.message(buf, pkt, tree)
       if desc then
-         pkt.cols.info:set(desc)
+         local dir = pkt.dst_port == tcp_port and "> " or "< "
+         pkt.cols.info:set(dir .. desc)
          tree:append_text(": " .. desc)
       end
    end
