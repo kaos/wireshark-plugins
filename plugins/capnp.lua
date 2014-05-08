@@ -69,6 +69,8 @@ end
 -- Dissect routines
 --------------------------------------------------------------------------------
 
+local req = {}
+
 function dissect.message(buf, pkt, tree)
    local count = buf(0,4):le_uint() + 1
    local data = buf(4 * (count + count % 2)):tvb()
@@ -156,9 +158,15 @@ function dissect.struct(seg, pos, segs, pkt, tree, node, override_offset)
       local fields_tree = tree:add(
          buf(pos + (offset + 1) * 8, (dsize + psize) * 8),
          "Fields")
+
       fields = dissect.struct_fields(
          b_data, b_ptr, ptr_offset, psize, discriminantValue,
          seg, segs, pkt, fields_tree, node.struct.fields)
+
+      if node.name == "Finish" then
+         print ("finish call to:", req[fields.questionId].method.name)
+         req[fields.questionId] = nil
+      end
    else
       for i = 0, psize - 1 do
          dissect.ptr(
@@ -210,6 +218,18 @@ function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
             res[f.name] = dissect.data(
                f.slot.type, f.slot.offset, seg, segs, b_data, b_ptr,
                psize, ptrs, pkt, tree, f.name, f.slot.defaultValue)
+
+            if f.name == "questionId" then
+               req.id = res.questionId
+            elseif f.name == "interfaceId" then
+               req[req.id] = { node = capnp_schema("id", res.interfaceId)}
+               print("new call on:", req[req.id].node.name)
+            elseif f.name == "methodId" then
+               local r = req[req.id]
+               r.method = r.node.interface.methods[res.methodId + 1]
+               r.content = capnp_schema("id", r.method.paramStructType)
+               print("  method:", r.method.name)
+            end
          end
       until true
    end
@@ -318,7 +338,8 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
          return dissect.ptr(
             seg, ptrs + (offset * 8), segs, pkt,
             tree:add(b_ptr(offset * 8, 8), name),
-            { name = "AnyPointer" })
+            name == "content" and req[req.id].content
+               or { name = "AnyPointer" })
       end
    elseif typ == "interface" then
       return data_type, tree:add(name, "<todo>", typ)

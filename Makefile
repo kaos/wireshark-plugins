@@ -47,4 +47,5 @@ schema: $(input) plugins/$(TARGET)_capnp.lua
 	$(CAPNP) decode $(SCHEMA) CodeGeneratorRequest |\
 	sed -e 's/[[(]/{/g' -e 's/[])]/}/g' \
 		-e 's/<opaque pointer>/opaquePointer/g' \
-		-e 's/\([Ii]d = \)\([0-9][0-9]*\)/\1"\2"/g' >> $@
+		-e 's/\([Ii]d = \)\([0-9][0-9]*\)/\1"\2"/g' \
+		-e 's/\(StructType = \)\([0-9][0-9]*\)/\1"\2"/g' >> $@
