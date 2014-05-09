@@ -102,6 +102,13 @@ make schema input=/path/to/my-schema.capnp
 This will compile the schema to `plugins/my-schema_capnp.lua` and is
 automatically picked up by the dissector.
 
-*Notice:* The content is not (yet) parsed with a schema, and as such
-doesn't get dumped to text form.
+*Notice* As wireshark re-dissects messages ad-hoc while browsing (why,
+oh-why?! waily waily) it is hard to keep track of request/answer id's,
+which requires an in-sequence approach. I'm considering looking at
+packet numbers to help out here, but it as of yet not implemented.
 
+So, if you look at a result, and the contents are not dissected
+properly, even though there is a schema for the data, try locating the
+corresponding call and visit that first. On a similar note, if the
+result contents are of the wrong type, re-visit the correct call, as
+the request id may have been re-used.

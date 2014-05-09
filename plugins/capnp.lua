@@ -17,6 +17,7 @@
 local proto = Proto("capnp", "Cap'n Proto RPC Protocol")
 local tcp_port
 local dir_marker = {}
+local dir
 
 proto.fields.text = ProtoField.string("capnp.text", "Text")
 proto.prefs.tcp_port = Pref.uint(
@@ -31,10 +32,11 @@ local fileNode, messageNode
 function proto.dissector(buf, pkt, root)
    if buf(0,1):bitfield(6, 2) == 0 then
       pkt.cols.protocol:set("CAPNP")
+      dir = pkt.dst_port == tcp_port
       local tree = root:add(proto, buf(0))
       local desc = dissect.message(buf, pkt, tree)
       if desc then
-         local marker = dir_marker[pkt.dst_port == tcp_port] or ""
+         local marker = dir_marker[dir] or ""
          pkt.cols.info:set(marker .. desc)
          tree:append_text(": " .. desc)
       end
@@ -69,7 +71,7 @@ end
 -- Dissect routines
 --------------------------------------------------------------------------------
 
-local req = {}
+local reqs = { [true] = {}, [false] = {}}
 
 function dissect.message(buf, pkt, tree)
    local count = buf(0,4):le_uint() + 1
@@ -77,8 +79,9 @@ function dissect.message(buf, pkt, tree)
    local segs = {}
    local seg_tree = tree:add(buf(0,4), "Segments:", count)
 
-   -- clear request id before dissecting new message
-   req.id = nil
+   reqs.dir = dir
+   reqs[true].id = nil
+   reqs[false].id = nil
 
    -- decode segments header
    for i = 1, count do
@@ -183,34 +186,51 @@ end
 
 function dissect.struct_discriminant(buf, struct, tree, label)
    local discriminant = struct and struct.discriminantCount > 0
-   if discriminant then
-      local data = buf(struct.discriminantOffset * 2, 2)
-      discriminant = data:le_uint()
+   if not discriminant then
+      return false, nil, tree
+   end
 
-      for _, f in ipairs(struct.fields) do
-         if f.discriminantValue == discriminant then
-            return discriminant, f, tree:add(
-               data, (label or "Union") .. ", tag:",  discriminant, "(", f.name, ")")
-         end
+   local data = buf(struct.discriminantOffset * 2, 2)
+   discriminant = data:le_uint()
+
+   for _, f in ipairs(struct.fields) do
+      if f.discriminantValue == discriminant then
+         return discriminant, f, tree:add(
+            data, (label or "Union") .. ", tag:",  discriminant, "(", f.name, ")")
       end
    end
 end
 
 local function set_content_type(t, id)
+   local req = reqs[reqs.dir]
    if id then
       req.id = id
    end
 
    local r = req[id or req.id]
-   r.content = capnp_schema("id", r.method[t])
+   if r then
+      r.content = capnp_schema("id", r.method[t])
+   else
+      --print("capnp: unknown request id:", req.id, dir_marker[reqs.dir])
+      req.id = nil
+   end
 end
 
-local function reg_call(res)
+local function call_req(res)
+   local req = reqs[dir]
    local r = { node = capnp_schema("id", res.interfaceId)}
    r.method = r.node.interface.methods[res.methodId + 1]
    req.id = res.questionId
+   --print("++new call", req.id, dir_marker[reqs.dir])
    req[req.id] = r
    set_content_type("paramStructType")
+end
+
+local function result_req(res)
+   -- results travel in opposite direction of that of calls/finish requests.
+   reqs.dir = not dir
+   --print("==result", res.answerId, dir_marker[reqs.dir])
+   set_content_type("resultStructType", res.answerId)
 end
 
 -- Notice: only default values for bool fields are currently implemented!
@@ -218,6 +238,9 @@ function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
                                seg, segs, pkt, tree, node)
    local res = {}
    local fields = node.struct.fields
+
+   if not fields then return res end
+
    for _, f in ipairs(fields) do
       repeat
          if f.discriminantValue < 0xffff and
@@ -235,11 +258,11 @@ function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
             -- processing the call params
             if node.name == "Call" then
                if f.name == "params" then
-                  reg_call(res)
+                  call_req(res)
                end
             elseif node.name == "Return" then
                if f.name == "results" then
-                  set_content_type("resultStructType", res.answerId)
+                  result_req(res)
                end
             end
 
@@ -250,9 +273,11 @@ function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
       until true
    end
 
-   -- clear out call meta data when done with it
+   -- Clear out call meta data when done with it. Maybe not the best
+   -- thing to do, but it's no good to hold on to them forever either.
    if node.name == "Finish" then
-      req[res.questionId] = nil
+      reqs[reqs.dir][res.questionId] = nil
+      --print("--call done", res.questionId, dir_marker[reqs.dir])
    end
 
    return res
@@ -332,8 +357,8 @@ end
 function dissect.cap(seg, pos, segs, pkt, tree, node)
    local buf = segs[seg]
    local idx = buf(pos + 4, 4):le_uint()
-   tree:append_text(": " .. node.name .. " = cap " .. tostring(idx))
-   tree:add(buf(pos + 4, 4), "Capability:", idx)
+   tree:append_text(": " .. node.name .. ", index: " .. tostring(idx))
+   tree:add(buf(pos + 4, 4), "capTable index:", idx)
    return { cap=idx }
 end
 
@@ -357,6 +382,7 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
       end
    elseif typ == "anyPointer" then
       if offset < psize then
+         local req = reqs[reqs.dir]
          return dissect.ptr(
             seg, ptrs + (offset * 8), segs, pkt,
             tree:add(b_ptr(offset * 8, 8), name),
@@ -365,7 +391,11 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
                or { name = "AnyPointer" })
       end
    elseif typ == "interface" then
-      return data_type, tree:add(name, "<todo>", typ)
+      return dissect.cap(
+         seg, ptrs + (offset * 8), segs, pkt,
+         tree:add(b_ptr(offset * 8, 8), name),
+         capnp_schema("id", val.typeId)
+            or { name = "(Interface)" })
    elseif typ == "void" then
       return typ, tree:add(name .. ":", "(void)")
    elseif typ == "bool" then
@@ -391,6 +421,13 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
       if (offset + 1) * size <= b_data:len() then
          local b = b_data(offset * size, size)
          local v = size < 8 and b:le_uint() or tostring(b:le_uint64())
+         return v, tree:add(b, name .. ":", v)
+      end
+   elseif string.sub(typ, 1, 5) == "float" then
+      local size = tonumber(string.sub(typ, 6)) / 8
+      if (offset + 1) * size <= b_data:len() then
+         local b = b_data(offset * size, size)
+         local v = b:le_float()
          return v, tree:add(b, name .. ":", v)
       end
    elseif typ == "headless-struct" then
