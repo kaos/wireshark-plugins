@@ -77,6 +77,9 @@ function dissect.message(buf, pkt, tree)
    local segs = {}
    local seg_tree = tree:add(buf(0,4), "Segments:", count)
 
+   -- clear request id before dissecting new message
+   req.id = nil
+
    -- decode segments header
    for i = 1, count do
       local b_size = buf(4 * i, 4)
@@ -161,12 +164,7 @@ function dissect.struct(seg, pos, segs, pkt, tree, node, override_offset)
 
       fields = dissect.struct_fields(
          b_data, b_ptr, ptr_offset, psize, discriminantValue,
-         seg, segs, pkt, fields_tree, node.struct.fields)
-
-      if node.name == "Finish" then
-         print ("finish call to:", req[fields.questionId].method.name)
-         req[fields.questionId] = nil
-      end
+         seg, segs, pkt, fields_tree, node)
    else
       for i = 0, psize - 1 do
          dissect.ptr(
@@ -198,10 +196,28 @@ function dissect.struct_discriminant(buf, struct, tree, label)
    end
 end
 
+local function set_content_type(t, id)
+   if id then
+      req.id = id
+   end
+
+   local r = req[id or req.id]
+   r.content = capnp_schema("id", r.method[t])
+end
+
+local function reg_call(res)
+   local r = { node = capnp_schema("id", res.interfaceId)}
+   r.method = r.node.interface.methods[res.methodId + 1]
+   req.id = res.questionId
+   req[req.id] = r
+   set_content_type("paramStructType")
+end
+
 -- Notice: only default values for bool fields are currently implemented!
 function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
-                               seg, segs, pkt, tree, fields)
+                               seg, segs, pkt, tree, node)
    local res = {}
+   local fields = node.struct.fields
    for _, f in ipairs(fields) do
       repeat
          if f.discriminantValue < 0xffff and
@@ -213,26 +229,32 @@ function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
                = dissect.struct_discriminant(b_data, group.struct, tree, f.name)
             res[f.name] = dissect.struct_fields(
                b_data, b_ptr, ptrs, psize, group_discriminantValue,
-               seg, segs, pkt, group_tree, group.struct.fields)
+               seg, segs, pkt, group_tree, group)
          else
+            -- make sure to register this call's meta data before
+            -- processing the call params
+            if node.name == "Call" then
+               if f.name == "params" then
+                  reg_call(res)
+               end
+            elseif node.name == "Return" then
+               if f.name == "results" then
+                  set_content_type("resultStructType", res.answerId)
+               end
+            end
+
             res[f.name] = dissect.data(
                f.slot.type, f.slot.offset, seg, segs, b_data, b_ptr,
                psize, ptrs, pkt, tree, f.name, f.slot.defaultValue)
-
-            if f.name == "questionId" then
-               req.id = res.questionId
-            elseif f.name == "interfaceId" then
-               req[req.id] = { node = capnp_schema("id", res.interfaceId)}
-               print("new call on:", req[req.id].node.name)
-            elseif f.name == "methodId" then
-               local r = req[req.id]
-               r.method = r.node.interface.methods[res.methodId + 1]
-               r.content = capnp_schema("id", r.method.paramStructType)
-               print("  method:", r.method.name)
-            end
          end
       until true
    end
+
+   -- clear out call meta data when done with it
+   if node.name == "Finish" then
+      req[res.questionId] = nil
+   end
+
    return res
 end
 
@@ -338,7 +360,8 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
          return dissect.ptr(
             seg, ptrs + (offset * 8), segs, pkt,
             tree:add(b_ptr(offset * 8, 8), name),
-            name == "content" and req[req.id].content
+            name == "content" and req.id
+               and req[req.id].content
                or { name = "AnyPointer" })
       end
    elseif typ == "interface" then
@@ -378,7 +401,7 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
          local discriminantValue = dissect.struct_discriminant(data, val.struct, struct_tree)
          return dissect.struct_fields(
             data:tvb(), nil, 0, 0, discriminantValue, seg, segs, pkt,
-            struct_tree, val.struct.fields)
+            struct_tree, val)
       end
    else
       return "<not dissected>", tree:add(name .. ":", "<field type not dissected>", typ)
