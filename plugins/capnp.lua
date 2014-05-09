@@ -375,6 +375,14 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
          end
          return value, tree:add(b, name .. ":", tostring(value))
       end
+   elseif typ == "enum" then
+      if (offset + 1) * 2 <= b_data:len() then
+         local b = b_data(offset * 2, 2)
+         local n = capnp_schema("id", val.typeId)
+         local t = b:le_uint()
+         local v = n and n.enum.enumerants[t + 1].name or t
+         return v, tree:add(b, name .. ":", v)
+      end
    elseif string.sub(typ, 1, 3) == "int" then
       local size = tonumber(string.sub(typ, 4)) / 8
       if (offset + 1) * size <= b_data:len() then

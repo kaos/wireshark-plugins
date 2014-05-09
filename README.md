@@ -23,6 +23,7 @@ Cap'n Proto RPC protocol dissector
 The full RPC schema is available, giving pretty good insight into what
 is going on, at the RPC level.
 
+![screenshot](https://raw.githubusercontent.com/kaos/wireshark-plugins/master/screenshot.png "Screenshot of Cap'n Proto RPC dissector")
 
 ### Capture some data
 
@@ -156,5 +157,6 @@ automatically picked up by the dissector.
 
 *Notice* As wireshark re-dissects messages ad-hoc while browsing (why,
 oh-why?! waily waily) it is hard to keep track of request/answer id's,
-which requires an in-sequence approach. I'm considering looking at
-packet numbers to help out here, so it should work pretty well now..
+which requires an in-sequence approach. I've made an attempt at
+keeping track of the packet number-range for each request id, so it
+should work pretty well now, I think..
