@@ -526,27 +526,31 @@ end
 
 function describe.struct.Call(obj)
    local f = obj.fields
+   local id = f.interfaceId
+   local mid = f.methodId
+   local cap = capnp_schema("id", id)
+   local o = cap and cap.name or tostring(id)
+   local m = cap and cap.interface.methods[mid + 1].name
+      or "method(" .. tostring(mid) .. ") "
    local t = {}
    for _, k in ipairs({ "target", "params" }) do
       t[k] = describe.value(f[k])
    end
    return "(" .. tostring(f.questionId) .. ") " .. t.target
-      .. "::" .. f.interfaceId .. "->method(" .. f.methodId .. ") "
-      .. t.params .. " return to: " .. next(f.sendResultsTo)
+      .. "::" .. o .. "->" .. m .. t.params
+      .. " return to: " .. next(f.sendResultsTo)
       .. ", tail call: " .. tostring(f.allowThirdPartyTailCall)
 end
 
 function describe.struct.Return(obj)
    local f = obj.fields
    local result = describe.discriminant(obj)
-   return "(" .. tostring(f.answerId) .. ") releaseParamCaps="
-      .. tostring(f.releaseParamCaps) .. " " .. result
+   return "(" .. tostring(f.answerId) .. ") " .. result
 end
 
 function describe.struct.Finish(obj)
    local f = obj.fields
-   return "(" .. tostring(f.questionId) .. ") releaseResultCaps="
-      .. tostring(f.releaseResultCaps)
+   return "(" .. tostring(f.questionId) .. ")"
 end
 
 function describe.struct.Resolve(obj)
@@ -557,7 +561,7 @@ end
 
 function describe.struct.Release(obj)
    local f = obj.fields
-   return "(" .. tostring(f.id) .. ") referenceCount=" .. tostring(f.referenceCount)
+   return "(" .. tostring(f.id) .. ")"
 end
 
 -- function describe.struct.Disembargo()
@@ -569,7 +573,7 @@ end
 function describe.struct.Restore(obj)
    local f = obj.fields
    local object = describe.value(f.objectId)
-   return "(" .. tostring(f.questionId) .. ") objectId=" .. object
+   return "(" .. tostring(f.questionId) .. ") " .. object
 end
 
 -- function describe.struct.Delete()
