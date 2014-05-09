@@ -35,60 +35,112 @@ Example command to capture the data from the capnp calculator sample
     sleep 2 && ./calculator-client localhost:55000
 ```
 
-It can look something like this (output from `tshark -r <capture-file.pcapng> -O capnp`):
+It can look something like this (output from `tshark -r <capture-file.pcapng> -Y capnp`):
 
 ```
-...
-Frame 4: 130 bytes on wire (1040 bits), 130 bytes captured (1040 bits) on interface 0
+  4 0.000337000    127.0.0.1 51771 127.0.0.1    55000 CAPNP 130 > restore(0) "calculator\0"
+  6 0.000383000    127.0.0.1 51771 127.0.0.1    55000 CAPNP 242 > call(1) (promisedAnswer=(0, []))::Calculator->evaluate(capTable=[], content=(expression=(literal=123))) return to
+: caller, tail call: false
+  8 0.000419000    127.0.0.1 51771 127.0.0.1    55000 CAPNP 210 > call(2) (promisedAnswer=(1, [getPointerField=0]))::Value->read(capTable=[], content=()) return to: caller, tail c
+all: false
+ 10 0.000479000    127.0.0.1 55000 127.0.0.1    51771 CAPNP 162 <  return(0) results(capTable=[(senderHosted=0)], content=cap(0))
+ 12 0.000600000    127.0.0.1 55000 127.0.0.1    51771 CAPNP 170 <  return(1) results(capTable=[(senderHosted=1)], content=(value=cap(0)))
+ 14 0.000626000    127.0.0.1 51771 127.0.0.1    55000 CAPNP 106 > finish(0)
+ 15 0.000684000    127.0.0.1 55000 127.0.0.1    51771 CAPNP 154 <  return(2) results(capTable=[], content=(value=123))
+ 16 0.001076000    127.0.0.1 51771 127.0.0.1    55000 CAPNP 106 > finish(2)
+ 17 0.001200000    127.0.0.1 51771 127.0.0.1    55000 CAPNP 106 > finish(1)
+ 18 0.001241000    127.0.0.1 51771 127.0.0.1    55000 CAPNP 106 > release(1)
+```
+
+And using `-O capnp` instead:
+```
+Frame 6: 242 bytes on wire (1936 bits), 242 bytes captured (1936 bits) on interface 0
 Ethernet II, Src: 00:00:00_00:00:00 (00:00:00:00:00:00), Dst: 00:00:00_00:00:00 (00:00:00:00:00:00)
 Internet Protocol Version 4, Src: 127.0.0.1 (127.0.0.1), Dst: 127.0.0.1 (127.0.0.1)
-Transmission Control Protocol, Src Port: 51771 (51771), Dst Port: 55000 (55000), Seq: 1, Ack: 1, Len: 64
-Cap'n Proto RPC Protocol: restore(0) objectId="calculator\0"
+Transmission Control Protocol, Src Port: 51771 (51771), Dst Port: 55000 (55000), Seq: 65, Ack: 1, Len: 176
+Cap'n Proto RPC Protocol: call(1) (promisedAnswer=(0, []))::Calculator->evaluate(content=(expression=(literal=123)), capTable=[]) return to: caller, tail call: false
     Segments: 1
-        Segment: 0 ( 7 words )
-            Data ( 56 bytes )
-    Root: Message, union: restore
+        Segment: 0 ( 21 words )
+            Data ( 168 bytes )
+    Root: Message, union: call
         (raw struct)
             Data offset: 0
             Data ( 1 words )
                 Data ( 8 bytes )
-                Union, tag: 8 ( restore )
+                Union, tag: 2 ( call )
             Pointers: 1
                 Data ( 8 bytes )
         Fields
-            restore: Restore
+            call: Call
                 (raw struct)
                     Data offset: 0
-                    Data ( 1 words )
-                        Data ( 8 bytes )
-                    Pointers: 1
-                        Data ( 8 bytes )
+                    Data ( 3 words )
+                        Data ( 24 bytes )
+                    Pointers: 3
+                        Data ( 24 bytes )
                 Fields
-                    questionId: 0
-                    objectId: AnyPointer = "calculator\0"
-                        Offset: 0
-                        Element size: 8
-                        Count: 11
-                        Text: "calculator\0"
+                    questionId: 1
+                    target: MessageTarget, union: promisedAnswer
+                        (raw struct)
+                            Data offset: 9
+                            Data ( 1 words )
+                                Data ( 8 bytes )
+                                Union, tag: 1 ( promisedAnswer )
+                            Pointers: 1
+                                Data ( 8 bytes )
+                        Fields
+                            promisedAnswer: PromisedAnswer
+                                (raw struct)
+                                    Data offset: 0
+                                    Data ( 1 words )
+                                        Data ( 8 bytes )
+                                    Pointers: 1
+                                        Data ( 8 bytes )
+                                Fields
+                                    questionId: 0
+                                    transform: 0 items
+                                        Offset: 0
+                                        Element size: 32
+                                        Count: 0
+                    interfaceId: 10923537602090224694
+                    methodId: 0
+                    params: Payload
+                        (raw struct)
+                            Data offset: 1
+                            Data ( 0 words )
+                            Pointers: 2
+                                Data ( 16 bytes )
+                        Fields
+                            content: evaluate$Params
+                                (raw struct)
+                                    Data offset: 1
+                                    Data ( 0 words )
+                                    Pointers: 1
+                                        Data ( 8 bytes )
+                                Fields
+                                    expression: Expression, union: literal
+                                        (raw struct)
+                                            Data offset: 0
+                                            Data ( 2 words )
+                                                Data ( 16 bytes )
+                                                Union, tag: 0 ( literal )
+                                            Pointers: 2
+                                                Data ( 16 bytes )
+                                        Fields
+                                            literal: 123
+                            capTable: 0 items
+                                Offset: 9
+                                Element size: composite
+                                Words: 0
+                                    Count: 0
+                                Tag: CapDescriptor
+                    sendResultsTo, tag: 0 ( caller )
+                        caller: (void)
+                    allowThirdPartyTailCall: false
 
 ...
 ```
 
-The text description of the RPC message is close to that of the capnp stringify ones, some excerpt from the calculator sample:
-
-```
-Cap'n Proto RPC Protocol: restore(0) objectId="calculator\0"
-Cap'n Proto RPC Protocol: call(1) (promisedAnswer=(0, []))::10923537602090224694->method(0) (capTable=[], content=()) return to: caller, tail call: false
-Cap'n Proto RPC Protocol: call(2) (promisedAnswer=(1, [getPointerField=0]))::14116142932258867410->method(0) (capTable=[], content=()) return to: caller, tail call: false
-Cap'n Proto RPC Protocol: return(0) releaseParamCaps=true results(capTable=[(senderHosted=0)], content=cap(0))
-Cap'n Proto RPC Protocol: return(1) releaseParamCaps=false results(capTable=[(senderHosted=1)], content=())
-Cap'n Proto RPC Protocol: finish(0) releaseResultCaps=false
-Cap'n Proto RPC Protocol: return(2) releaseParamCaps=false results(capTable=[], content=())
-Cap'n Proto RPC Protocol: finish(2) releaseResultCaps=false
-Cap'n Proto RPC Protocol: finish(1) releaseResultCaps=false
-Cap'n Proto RPC Protocol: release(1) referenceCount=1
-
-```
 
 ### Custom schemas
 
@@ -105,10 +157,4 @@ automatically picked up by the dissector.
 *Notice* As wireshark re-dissects messages ad-hoc while browsing (why,
 oh-why?! waily waily) it is hard to keep track of request/answer id's,
 which requires an in-sequence approach. I'm considering looking at
-packet numbers to help out here, but it as of yet not implemented.
-
-So, if you look at a result, and the contents are not dissected
-properly, even though there is a schema for the data, try locating the
-corresponding call and visit that first. On a similar note, if the
-result contents are of the wrong type, re-visit the correct call, as
-the request id may have been re-used.
+packet numbers to help out here, so it should work pretty well now..

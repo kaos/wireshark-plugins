@@ -18,6 +18,7 @@ local proto = Proto("capnp", "Cap'n Proto RPC Protocol")
 local tcp_port
 local dir_marker = {}
 local dir
+local reqs = {}
 
 proto.fields.text = ProtoField.string("capnp.text", "Text")
 proto.prefs.tcp_port = Pref.uint(
@@ -59,6 +60,8 @@ end
 function proto.init()
    dir_marker[true] = proto.prefs.to_port .. " "
    dir_marker[false] = proto.prefs.from_port .. " "
+   reqs[true] = {}
+   reqs[false] = {}
 
    if proto.prefs.tcp_port == tcp_port then return end
    unregister()
@@ -71,8 +74,6 @@ end
 -- Dissect routines
 --------------------------------------------------------------------------------
 
-local reqs = { [true] = {}, [false] = {}}
-
 function dissect.message(buf, pkt, tree)
    local count = buf(0,4):le_uint() + 1
    local data = buf(4 * (count + count % 2)):tvb()
@@ -80,8 +81,7 @@ function dissect.message(buf, pkt, tree)
    local seg_tree = tree:add(buf(0,4), "Segments:", count)
 
    reqs.dir = dir
-   reqs[true].id = nil
-   reqs[false].id = nil
+   reqs.id = nil
 
    -- decode segments header
    for i = 1, count do
@@ -201,38 +201,6 @@ function dissect.struct_discriminant(buf, struct, tree, label)
    end
 end
 
-local function set_content_type(t, id)
-   local req = reqs[reqs.dir]
-   if id then
-      req.id = id
-   end
-
-   local r = req[id or req.id]
-   if r then
-      r.content = capnp_schema("id", r.method[t])
-   else
-      --print("capnp: unknown request id:", req.id, dir_marker[reqs.dir])
-      req.id = nil
-   end
-end
-
-local function call_req(res)
-   local req = reqs[dir]
-   local r = { node = capnp_schema("id", res.interfaceId)}
-   r.method = r.node.interface.methods[res.methodId + 1]
-   req.id = res.questionId
-   --print("++new call", req.id, dir_marker[reqs.dir])
-   req[req.id] = r
-   set_content_type("paramStructType")
-end
-
-local function result_req(res)
-   -- results travel in opposite direction of that of calls/finish requests.
-   reqs.dir = not dir
-   --print("==result", res.answerId, dir_marker[reqs.dir])
-   set_content_type("resultStructType", res.answerId)
-end
-
 -- Notice: only default values for bool fields are currently implemented!
 function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
                                seg, segs, pkt, tree, node)
@@ -258,11 +226,11 @@ function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
             -- processing the call params
             if node.name == "Call" then
                if f.name == "params" then
-                  call_req(res)
+                  reqs.call(res, pkt)
                end
             elseif node.name == "Return" then
                if f.name == "results" then
-                  result_req(res)
+                  reqs.result(res, pkt)
                end
             end
 
@@ -276,8 +244,7 @@ function dissect.struct_fields(b_data, b_ptr, ptrs, psize, discriminant,
    -- Clear out call meta data when done with it. Maybe not the best
    -- thing to do, but it's no good to hold on to them forever either.
    if node.name == "Finish" then
-      reqs[reqs.dir][res.questionId] = nil
-      --print("--call done", res.questionId, dir_marker[reqs.dir])
+      reqs.finish(res, pkt)
    end
 
    return res
@@ -382,12 +349,11 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
       end
    elseif typ == "anyPointer" then
       if offset < psize then
-         local req = reqs[reqs.dir]
+         local req = reqs.get(pkt)
          return dissect.ptr(
             seg, ptrs + (offset * 8), segs, pkt,
             tree:add(b_ptr(offset * 8, 8), name),
-            name == "content" and req.id
-               and req[req.id].content
+            name == "content" and req and req.content
                or { name = "AnyPointer" })
       end
    elseif typ == "interface" then
@@ -445,6 +411,63 @@ function dissect.data(data_type, offset, seg, segs, b_data, b_ptr, psize, ptrs,
    end
 
    return "(no data)", tree:add(name .. ":", "(no data)", typ)
+end
+
+--------------------------------------------------------------------------------
+-- request tracking
+--------------------------------------------------------------------------------
+
+function reqs.get(pkt, id)
+   if id then
+      reqs.id = id
+   else
+      id = reqs.id
+   end
+
+   if not id then return nil end
+
+   local req = reqs[reqs.dir][id]
+   if not req then
+      req = {}
+      reqs[reqs.dir][id] = req
+   end
+
+   local r = req[id]
+   if not r then
+      r = {}
+      req[id] = r
+   end
+
+   for _, v in ipairs(r) do
+      if v.from <= pkt.number and not v.to or v.to >= pkt.number then
+         return v
+      end
+   end
+
+   local v = { from = pkt.number }
+   r[#r + 1] = v
+   return v
+end
+
+function reqs.call(fields, pkt)
+   local r = reqs.get(pkt, fields.questionId)
+   local node = capnp_schema("id", fields.interfaceId)
+   r.method = node.interface.methods[fields.methodId + 1]
+   r.content = capnp_schema("id", r.method.paramStructType)
+end
+
+function reqs.result(fields, pkt)
+   -- results travel in opposite direction of that of calls/finish requests.
+   reqs.dir = not dir
+   local r = reqs.get(pkt, fields.answerId)
+   if r.method then
+      r.content = capnp_schema("id", r.method.resultStructType)
+   end
+end
+
+function reqs.finish(fields, pkt)
+   local r = reqs.get(pkt, fields.questionId)
+   r.to = pkt.number
 end
 
 --------------------------------------------------------------------------------
