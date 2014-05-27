@@ -15,15 +15,18 @@
 --
 
 local proto = Proto("capnp", "Cap'n Proto RPC Protocol")
-local tcp_port
+local tcp_port, udp_port
 local dir_marker = {}
 local dir
 local reqs = {}
 
 proto.fields.text = ProtoField.string("capnp.text", "Text")
-proto.prefs.tcp_port = Pref.uint(
+proto.prefs["tcp.port"] = Pref.uint(
    "TCP Port", 9090,
-   "Set the port for Cap'n Proto RPC messages.")
+   "Set the tcp port for Cap'n Proto RPC messages.")
+proto.prefs["udp.port"] = Pref.uint(
+   "UDP Port", 9090,
+   "Set the udp port for Cap'n Proto RPC messages.")
 proto.prefs.to_port = Pref.string("Direction marker, to port", "->", "")
 proto.prefs.from_port = Pref.string("Direction marker, from port", "<-", "")
 
@@ -31,30 +34,45 @@ local dissect = {}
 local fileNode, messageNode
 
 function proto.dissector(buf, pkt, root)
-   if buf(0,1):bitfield(6, 2) == 0 then
-      pkt.cols.protocol:set("CAPNP")
-      dir = pkt.dst_port == tcp_port
-      local tree = root:add(proto, buf(0))
-      local desc = dissect.message(buf, pkt, tree)
+   pkt.cols.protocol:set("CAPNP")
+
+   -- didn't find any reliable way to see if it is a TCP or UDP packet!
+   dir = pkt.dst_port == tcp_port or pkt.dst_port == udp_port
+
+   local desc
+   while buf:len() > 0 do
+      local d
+      buf, d = dissect.message(buf, pkt, root)
       if desc then
-         local marker = dir_marker[dir] or ""
-         pkt.cols.info:set(marker .. desc)
-         tree:append_text(": " .. desc)
+         desc = desc .. ", ..."
+      else
+         desc = d
       end
    end
+
+   local marker = dir_marker[dir] or ""
+   pkt.cols.info:set(marker .. desc)
 end
 
-local function unregister()
-   if tcp_port then
-      DissectorTable.get("tcp.port"):remove(tcp_port, proto)
-      tcp_port = nil
+local function unregister(name, port)
+   if port then
+      DissectorTable.get(name):remove(port, proto)
    end
 end
 
-local function register()
-   if tcp_port then
-      DissectorTable.get("tcp.port"):add(tcp_port, proto)
+local function register(name, port)
+   if port then
+      DissectorTable.get(name):add(port, proto)
    end
+end
+
+local function update_dissector_port(name, port)
+   if proto.prefs[name] ~= port then
+      unregister(name, port)
+      port = proto.prefs[name]
+      register(name, port)
+   end
+   return port
 end
 
 function proto.init()
@@ -63,10 +81,8 @@ function proto.init()
    reqs[true] = {}
    reqs[false] = {}
 
-   if proto.prefs.tcp_port == tcp_port then return end
-   unregister()
-   tcp_port = proto.prefs.tcp_port
-   register()
+   tcp_port = update_dissector_port("tcp.port", tcp_port)
+   udp_port = update_dissector_port("udp.port", udp_port)
 end
 
 
@@ -74,10 +90,12 @@ end
 -- Dissect routines
 --------------------------------------------------------------------------------
 
-function dissect.message(buf, pkt, tree)
+function dissect.message(buf, pkt, root)
    local count = buf(0,4):le_uint() + 1
-   local data = buf(4 * (count + count % 2)):tvb()
+   local seg_table_size = 4 * (count + count % 2)
+   local data = buf(seg_table_size):tvb()
    local segs = {}
+   local tree = root:add(proto, buf(0, seg_table_size))
    local seg_tree = tree:add(buf(0,4), "Segments:", count)
 
    reqs.dir = dir
@@ -100,8 +118,14 @@ function dissect.message(buf, pkt, tree)
       messageNode = capnp_schema("id", messageId)
    end
 
-   msg = dissect.ptr(0, 0, segs, pkt, tree:add(segs[0](0,8), "Root"), messageNode)
-   return dissect.describe_message(msg)
+   local msg = dissect.ptr(
+      0, 0, segs, pkt, tree:add(segs[0](0,8), "Root"), messageNode)
+   local desc = dissect.describe_message(msg)
+   if desc then
+      tree:append_text(": " .. desc)
+   end
+
+   return data, desc
 end
 
 function dissect.ptr(seg, pos, segs, pkt, tree, node)
@@ -460,8 +484,10 @@ end
 function reqs.call(fields, pkt)
    local r = reqs.get(pkt, fields.questionId)
    local node = capnp_schema("id", fields.interfaceId)
-   r.method = node.interface.methods[fields.methodId + 1]
-   r.content = capnp_schema("id", r.method.paramStructType)
+   if node then
+      r.method = node.interface.methods[fields.methodId + 1]
+      r.content = capnp_schema("id", r.method.paramStructType)
+   end
 end
 
 function reqs.result(fields, pkt)
