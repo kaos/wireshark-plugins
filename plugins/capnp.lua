@@ -14,6 +14,8 @@
 --   limitations under the License.
 --
 
+local capnp_schema = require("capnp_schema")
+
 local proto = Proto("capnp", "Cap'n Proto RPC Protocol")
 local tcp_port, udp_port
 local dir_marker = {}

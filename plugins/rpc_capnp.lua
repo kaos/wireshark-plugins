@@ -1,6 +1,4 @@
-if not capnp_schema then
-   capnp_schema = {}
-end
+local capnp_schema = require("capnp_schema")
 
 -- fake atoms
 local void = "void"
