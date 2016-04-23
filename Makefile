@@ -3,7 +3,7 @@ CAT = /bin/cat
 SCHEMA = /usr/local/include/capnp/schema.capnp
 TARGET = $(basename $(notdir $(input)))
 
-define MSG =
+define MSG
 The purpose of this Makefile is to generate new schemas for the capnp dissector.
 
 Usage:
@@ -15,10 +15,8 @@ by the capnp protocol dissector.
 endef
 export MSG
 
-define HEAD =
-if not capnp_schema then
-   capnp_schema = {}
-end
+define HEAD
+local capnp_schema = require("capnp_schema")
 
 -- fake atoms
 local void = "void"

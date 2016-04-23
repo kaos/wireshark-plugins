@@ -1,6 +1,4 @@
-if not capnp_schema then
-   capnp_schema = {}
-end
+local capnp_schema = {}
 
 local function find(s, key, val)
    for _, n in ipairs(s) do
@@ -28,3 +26,5 @@ setmetatable(
         return node
    end
 })
+
+return capnp_schema
