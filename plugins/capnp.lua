@@ -45,6 +45,10 @@ function proto.dissector(buf, pkt, root)
    while buf:len() > 0 do
       local d
       buf, d = dissect.message(buf, pkt, root)
+      if buf == nil then
+         -- More data needed
+         return
+      end
       if desc then
          desc = desc .. ", ..."
       else
@@ -95,6 +99,23 @@ end
 function dissect.message(buf, pkt, root)
    local count = buf(0,4):le_uint() + 1
    local seg_table_size = 8 * (1 + count // 2)
+
+   -- Check that the whole message is in the buffer
+   local message_size = seg_table_size
+   if message_size <= buf:len() then
+      -- Enough bytes to calculate the segment sizes
+      for i = 1, count do
+         local size = buf(4 * i, 4):le_uint() * 8
+         message_size = message_size + size
+      end
+   end
+   if message_size > buf:len() then
+      -- Ask Wireshark to call again when enough data is available
+      local missing = message_size - buf:len()
+      pkt.desegment_len = missing
+      return
+   end
+
    local data = buf(seg_table_size):tvb()
    local segs = {}
    local tree = root:add(proto, buf(0, seg_table_size))
