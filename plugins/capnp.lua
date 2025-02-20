@@ -94,7 +94,7 @@ end
 
 function dissect.message(buf, pkt, root)
    local count = buf(0,4):le_uint() + 1
-   local seg_table_size = 4 * (count + count % 2)
+   local seg_table_size = 8 * (1 + count // 2)
    local data = buf(seg_table_size):tvb()
    local segs = {}
    local tree = root:add(proto, buf(0, seg_table_size))
